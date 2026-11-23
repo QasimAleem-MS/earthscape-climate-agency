@@ -191,7 +191,7 @@ class Analyst:
         top = max(hist, key=lambda r: r[3]) if hist else None
         live = getattr(self, "live", None)
         facts = {
-            "dataset": "Berkeley Earth Surface Temperature: 10,064,718 records, 544,811 after cleaning, %d countries, yearly country data to 2013" % len(self.yearly),
+            "dataset": "Berkeley Earth Surface Temperature: 10,064,718 records, 544,811 after cleaning, %d countries; Berkeley yearly data to 2012, extended to 2025 and 2026-so-far with Copernicus ERA5" % len(self.yearly),
             "pakistan_model": "Model 2 linear regression trained 1950-2000, test RMSE 0.52 C on 2001-2013; forecasts %s" % self.model["forecasts"],
             "pakistan_alerts": "%d months 2001-2013 were >= %s C (the current alert threshold) above their 1951-1980 normal; biggest %s at +%s C" % (len(hist), th, top[0][:7] if top else "-", top[3] if top else "-"),
             "co2_correlation": "CO2 vs world land temperature 1959-2025: r = 0.9655",
@@ -205,17 +205,29 @@ class Analyst:
         return facts
 
     def country_facts(self, name, years):
-        pts = [p for p in self.yearly.get(name, []) if p[0] >= 1900]
+        fn = getattr(self, "series_fn", None)
+        pts = [p for p in (fn(name) if fn else self.yearly.get(name, [])) if p[0] >= 1900]
         if not pts:
             return None
         base = [t for y, t in pts if 1951 <= y <= 1980]
         b = sum(base) / len(base) if base else None
+        last = pts[-1][0]
         fit = cl.ols([p[0] for p in pts if p[0] >= 1950], [p[1] for p in pts if p[0] >= 1950])
         hot = max(pts, key=lambda p: p[1])
-        out = {"records": "%d to %d" % (pts[0][0], pts[-1][0]), "normal_1951_1980": cl.rnd(b),
-               "last_decade_mean_2004_2013": cl.rnd(sum(t for y, t in pts if y >= 2004) / max(1, sum(1 for y, _ in pts if y >= 2004))),
-               "trend_C_per_decade_1950_2013": cl.rnd(fit["b"] * 10, 3) if fit else None,
-               "warmest_year": hot}
+        dec = [t for y, t in pts if y > last - 10]
+        out = {"records": "%d to %d (Berkeley Earth to 2012, ERA5 matched to Berkeley from 2013)" % (pts[0][0], last),
+               "normal_1951_1980": cl.rnd(b),
+               "last_decade_mean_%d_%d" % (last - 9, last): cl.rnd(sum(dec) / len(dec)),
+               "warming_last_decade_vs_1951_1980_C": cl.rnd(sum(dec) / len(dec) - b) if b is not None else None,
+               "trend_C_per_decade_1950_%d" % last: cl.rnd(fit["b"] * 10, 3) if fit else None,
+               "warmest_year": hot, "latest_year": pts[-1]}
+        ytd = getattr(self, "ytd_fn", None)
+        try:
+            y = ytd(name) if ytd else None
+            if y:
+                out["current_year_so_far"] = y
+        except Exception:
+            pass
         if years:
             d = dict(pts)
             out["requested_years"] = {str(y): d.get(y) for y in years}

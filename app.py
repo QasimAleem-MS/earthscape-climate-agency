@@ -85,6 +85,9 @@ def full_series(name):
     ext, _, _ = recent_extension(name)
     return (berkeley_full(name) if ext else list(YEARLY.get(name, []))) + ext
 
+ANALYST.series_fn = full_series            # Aria sees Berkeley + ERA5 to the latest year
+ANALYST.ytd_fn = lambda n: recent_extension(n)[2]
+
 SETTINGS_FILE = os.path.join(BASE, "data", "settings.json")
 _threshold_global = [None]
 
