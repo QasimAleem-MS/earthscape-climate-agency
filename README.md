@@ -118,7 +118,7 @@ server-side and in the browser to stay well inside it.
 
 ## Running locally
 `pip install -r requirements.txt`, then `python app.py`, open http://127.0.0.1:5000
-Demo logins: admin / admin123 (Administrator), analyst / analyst123 (Analyst).
+Logins: set ADMIN_USERNAME, ADMIN_PASSWORD, ANALYST_USERNAME and ANALYST_PASSWORD as environment variables (Vercel > Settings > Environment Variables). Without them the app falls back to local development defaults.
 Optional: `export GROQ_API_KEY=...` before starting to enable the LLM analyst.
 
 ## Deployment

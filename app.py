@@ -5,8 +5,8 @@
 #
 # Run:  pip install flask   then   python app.py
 # Open: http://127.0.0.1:5000
-# Demo logins:  admin / admin123  (Administrator)
-#               analyst / analyst123  (Analyst)
+# Default logins are for local development only. In production set
+# ADMIN_USERNAME / ADMIN_PASSWORD and ANALYST_USERNAME / ANALYST_PASSWORD.
 # ============================================================
 
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, flash, get_flashed_messages
@@ -175,6 +175,19 @@ def load_users():
                 }
     except Exception:
         pass
+    # Built-in accounts can be renamed and given new passwords from the
+    # environment (Vercel > Settings > Environment Variables), so real
+    # credentials never live in the code: ADMIN_USERNAME / ADMIN_PASSWORD and
+    # ANALYST_USERNAME / ANALYST_PASSWORD. These win over the defaults.
+    for key, default in (("ADMIN", "admin"), ("ANALYST", "analyst")):
+        new_user = (os.environ.get(key + "_USERNAME") or "").strip()
+        new_pw = os.environ.get(key + "_PASSWORD") or ""
+        if not (new_user or new_pw):
+            continue
+        rec = users.pop(default)
+        if new_pw:
+            rec["password"] = generate_password_hash(new_pw)
+        users[new_user or default] = rec
     return users
 
 USERS = load_users()
