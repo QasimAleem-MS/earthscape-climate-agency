@@ -11,11 +11,10 @@
   {% with messages = get_flashed_messages(with_categories=true) %}
   <div class="ac-msg {% if messages %}{{ 'err' if messages[0][0] == 'error' else 'ok' }} show{% endif %}" id="loginMsg" role="alert" aria-live="polite">{% if messages %}{{ aicon('alert' if messages[0][0] == 'error' else 'check') }}<span>{{ messages[0][1] }}</span>{% endif %}</div>
   {% endwith %}
-  {{ roles('Analyst') }}
   {{ field('loginUser', 'username', 'Username', icon='user', auto='username') }}
   {{ field('loginPw', 'password', 'Password', type='password', icon='lock', auto='current-password') }}
   <div class="ac-row">
-    <span class="demo">Demo: <button type="button" class="linkbtn" data-demo="analyst">analyst</button> &middot; <button type="button" class="linkbtn" data-demo="admin">admin</button></span>
+    <span></span>
     <a class="forgotlink" href="{{ url_for('forgot') }}">Forgot password?</a>
   </div>
   <button type="submit" class="ac-submit" id="loginBtn">
@@ -29,15 +28,6 @@
   var ICON_ERR = '{{ aicon("alert")|replace("\n", " ")|safe }}', ICON_OK = '{{ aicon("check")|replace("\n", " ")|safe }}';
   function show(kind, text) { msg.className = 'ac-msg ' + kind + ' show'; msg.innerHTML = (kind === 'err' ? ICON_ERR : ICON_OK) + '<span></span>'; msg.querySelector('span').textContent = text; }
   function shake() { f.classList.remove('shake'); void f.offsetWidth; f.classList.add('shake'); }
-  var DEMO = { analyst: ['analyst', 'analyst123', 'Analyst'], admin: ['admin', 'admin123', 'Administrator'] };
-  document.querySelectorAll('[data-demo]').forEach(function (b) {
-    b.addEventListener('click', function () {
-      var d = DEMO[b.getAttribute('data-demo')];
-      f.username.value = d[0]; f.password.value = d[1];
-      f.querySelector('input[name=role][value="' + d[2] + '"]').checked = true;
-      f.username.dispatchEvent(new Event('input')); btn.focus();
-    });
-  });
   f.addEventListener('submit', function (e) {
     e.preventDefault();
     if (!f.username.value.trim() || !f.password.value) { show('err', 'Please enter your username and password.'); shake(); (f.username.value.trim() ? f.password : f.username).focus(); return; }
@@ -52,12 +42,11 @@
           setTimeout(function () { location.href = d.redirect; }, 900);
         } else {
           btn.disabled = false; show('err', d.error || 'Sign in failed.'); shake();
-          if (d.field === 'role') f.querySelector('.roles').classList.add('flag'); else f.password.select();
+          f.password.select();
         }
       })
       .catch(function () { btn.disabled = false; btn.classList.remove('loading'); show('err', 'Could not reach the server. Check your connection and try again.'); shake(); });
   });
-  f.querySelectorAll('input[name=role]').forEach(function (r) { r.addEventListener('change', function () { f.querySelector('.roles').classList.remove('flag'); }); });
 })();
 </script>
 {% endblock %}

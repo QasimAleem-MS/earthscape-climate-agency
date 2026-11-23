@@ -219,11 +219,25 @@ def admin_required(f):
     return wrap
 
 # ---------------- Authentication ----------------
+_FAILED = {}  # (ip, username) -> list of failure times, for a simple lockout
+
+def _too_many(key, window=600, limit=5):
+    now = time.time()
+    _FAILED[key] = [t for t in _FAILED.get(key, []) if now - t < window]
+    return len(_FAILED[key]) >= limit
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         u = request.form.get("username", "").strip()
         p = request.form.get("password", "")
+        key = ((request.headers.get("X-Forwarded-For") or request.remote_addr or "").split(",")[0].strip(), u.lower())
+        if _too_many(key):
+            msg = "Too many failed attempts. Please wait 10 minutes and try again."
+            if wants_json():
+                return jsonify({"ok": False, "error": msg}), 429
+            flash(msg, "error")
+            return redirect(url_for("login"))
         picked = request.form.get("role", "")
         user = USERS.get(u)
         if user and check_password_hash(user["password"], p):
@@ -233,6 +247,7 @@ def login():
                     return jsonify({"ok": False, "error": msg, "field": "role"}), 400
                 flash(msg, "error")
                 return redirect(url_for("login"))
+            _FAILED.pop(key, None)
             get_flashed_messages()  # never carry an old error past a good login
             session["user"] = u
             session["role"] = user["role"]
@@ -240,6 +255,7 @@ def login():
             if wants_json():
                 return jsonify({"ok": True, "redirect": url_for("dashboard"), "name": user["name"], "role": user["role"]})
             return redirect(url_for("dashboard"))
+        _FAILED.setdefault(key, []).append(time.time())
         if wants_json():
             return jsonify({"ok": False, "error": "Invalid username or password."}), 401
         flash("Invalid username or password.", "error")
