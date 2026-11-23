@@ -1,41 +1,64 @@
 {% extends "base.html" %}
+{% block title %}Data Explorer - EarthScape Climate Agency{% endblock %}
+{% block page_title %}Data Explorer{% endblock %}
+{% block page_sub %}Berkeley Earth yearly temperatures for {{ countries|length }} countries &middot; hover any chart for values{% endblock %}
 {% block content %}
-<h1>Data Explorer</h1>
-<p class="small">Pick a country. The graph shows its temperature of every year.
-<b>Move your mouse over the graph</b> and a small box tells you that year's temperature.</p>
-<div class="panel">
-  <label for="country">Select a country:</label>
-  <select id="country">
-    {% for c in countries %}<option value="{{ c }}" {% if c == 'Pakistan' %}selected{% endif %}>{{ c }}</option>{% endfor %}
-  </select>
-  <div id="stats" class="statsline"></div>
-  <canvas id="countryChart"></canvas>
+<div class="panel" style="padding:14px 18px">
+  <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+    <div style="min-width:240px;flex:1;max-width:360px"><label for="country" style="margin-top:0">Country</label>
+      <select id="country">{% for c in countries %}<option value="{{ c }}" {% if c == 'Pakistan' %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">{% for c in ['Pakistan','India','China','United States','United Kingdom','Saudi Arabia'] %}<button type="button" class="chip qc">{{ c }}</button>{% endfor %}</div>
+  </div>
 </div>
+<div class="kpis" id="exKpis"></div>
+<div class="panel reveal">
+  <div class="phead"><div><h2 id="exTitle">Yearly average temperature</h2><p class="sub" id="stats">&nbsp;</p></div><div class="seg" id="exRange"><button data-f="1900" class="on">1900&rarr;</button><button data-f="1950">1950&rarr;</button><button data-f="0">All</button></div></div>
+  <div class="chartbox lg"><canvas id="countryChart"></canvas></div>
+</div>
+<div class="panel reveal"><div class="phead"><div><h2>Warming stripes</h2><p class="sub">Each year vs the country's 1951&ndash;1980 average</p></div></div><div class="chartbox sm"><canvas id="exStripes"></canvas></div></div>
+<div class="grid2">
+  <div class="panel reveal"><div class="phead"><div><h2>Decade averages</h2><p class="sub">Mean of each decade with enough data</p></div></div><div class="chartbox"><canvas id="exDecades"></canvas></div></div>
+  <div class="panel reveal"><div class="phead"><div><h2>Distribution of years</h2><p class="sub">How many years fell in each temperature band</p></div></div><div class="chartbox"><canvas id="exHist"></canvas></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
 <script>
-let chart;
-async function loadCountry(name) {
-  const r = await fetch('/api/country/' + encodeURIComponent(name));
-  const d = await r.json();
-  document.getElementById('stats').textContent =
-    d.country + ': ' + d.records + ' yearly records, ' + d.from + ' to ' + d.to +
-    ' | average ' + d.average + ' C | lowest ' + d.minimum + ' C | highest ' + d.maximum + ' C';
-  if (chart) chart.destroy();
-  chart = new Chart(document.getElementById('countryChart'), {type: 'line',
-    data: {labels: d.points.map(p => p[0]),
-           datasets: [{label: 'Yearly average temperature (C)', data: d.points.map(p => p[1]),
-                       borderColor: '#4DA3FF', backgroundColor: 'rgba(77,163,255,0.16)', fill: true,
-                       pointRadius: 0, pointHoverRadius: 6, pointHitRadius: 14,
-                       pointHoverBackgroundColor: '#FFD34D', pointHoverBorderColor: '#0A1B33',
-                       borderWidth: 1.6, tension: 0.15}]},
-    options: {responsive: true, interaction: {mode: 'index', intersect: false},
-      plugins: {tooltip: {enabled: true, backgroundColor: '#0A1B33', borderColor: '#2E7CF6',
-        borderWidth: 1, titleColor: '#FFFFFF', bodyColor: '#EAF3FF', padding: 10, displayColors: false,
-        callbacks: {title: items => 'Year ' + items[0].label,
-                    label: item => d.country + ': ' + item.parsed.y + ' C average temperature'}}},
-      scales: {x: {ticks: {maxTicksLimit: 14}, title: {display: true, text: 'Year'}},
-               y: {title: {display: true, text: 'Average temperature (C)'}}}}});
-}
-document.getElementById('country').addEventListener('change', e => loadCountry(e.target.value));
-loadCountry('Pakistan');
+(function () {
+  var C = ES.C, charts = {}, data = null, from = 1900;
+  function mk(id, cfg) { if (charts[id] && charts[id].chart) charts[id].chart.destroy(); charts[id] = ES.now(id, cfg); }
+  function draw() {
+    var d = data, pts = d.points.filter(function (p) { return p[0] >= from; });
+    mk('countryChart', { type: 'line', data: { labels: pts.map(function (p) { return p[0]; }), datasets: [
+      { label: 'Yearly average (\u00b0C)', data: pts.map(function (p) { return p[1]; }), borderColor: C.sky, backgroundColor: ES.grad(C.sky, .3, 0), fill: true, borderWidth: 1.6 },
+      { label: '10-year running mean', data: pts.map(function (p, i) { var w = pts.slice(Math.max(0, i - 9), i + 1); return w.length < 10 ? null : +(w.reduce(function (s, x) { return s + x[1]; }, 0) / 10).toFixed(2); }), borderColor: C.red, borderWidth: 2.4 }] },
+      options: { plugins: { tooltip: { callbacks: { title: function (i) { return 'Year ' + i[0].label; }, label: function (i) { return i.parsed.y == null ? null : ' ' + i.dataset.label + ': ' + i.parsed.y.toFixed(2) + ' \u00b0C'; } } } }, scales: { x: { ticks: { maxTicksLimit: 14, maxRotation: 0 } }, y: { title: { display: true, text: '\u00b0C' } } } } });
+  }
+  async function loadCountry(name) {
+    document.getElementById('country').value = name;
+    var r = await fetch('/api/country/' + encodeURIComponent(name)), d = await r.json(); data = d;
+    document.getElementById('exTitle').textContent = d.country + ' \u00b7 yearly average temperature';
+    document.getElementById('stats').textContent = d.records + ' yearly records, ' + d.from + ' to ' + d.to;
+    var base = d.points.filter(function (p) { return p[0] >= 1951 && p[0] <= 1980; }), b = base.length ? base.reduce(function (s, p) { return s + p[1]; }, 0) / base.length : null;
+    var last = d.points.filter(function (p) { return p[0] >= 2004; }), l = last.length ? last.reduce(function (s, p) { return s + p[1]; }, 0) / last.length : null;
+    var hot = d.points.reduce(function (a, p) { return p[1] > a[1] ? p : a; });
+    document.getElementById('exKpis').innerHTML = [
+      ['Average', ES.fmt(d.average, 2) + '<small>\u00b0C</small>', 'all records', 'var(--sky)'], ['Lowest year', ES.fmt(d.minimum, 2) + '<small>\u00b0C</small>', 'coldest yearly mean', 'var(--cyan)'],
+      ['Highest year', ES.fmt(d.maximum, 2) + '<small>\u00b0C</small>', 'in ' + hot[0], 'var(--red)'], ['Warming', b != null && l != null ? ES.sign(l - b) + '<small>\u00b0C</small>' : '\u2013', '2004\u201313 vs 1951\u201380', 'var(--amber)']
+    ].map(function (k) { return '<div class="kpi" style="--c:' + k[3] + '"><div class="k-lab"><i></i>' + k[0] + '</div><div class="k-num">' + k[1] + '</div><div class="k-sub">' + k[2] + '</div></div>'; }).join('');
+    draw();
+    if (b != null) { var sp = d.points.filter(function (p) { return p[0] >= 1900; }); if (charts.s && charts.s.chart) charts.s.chart.destroy(); charts.s = ES.stripes('exStripes', sp.map(function (p) { return p[0]; }), sp.map(function (p) { return +(p[1] - b).toFixed(2); }), { base: '1951-1980' }); }
+    var dec = {}; d.points.forEach(function (p) { var k = Math.floor(p[0] / 10) * 10; (dec[k] = dec[k] || []).push(p[1]); });
+    var dk = Object.keys(dec).filter(function (k) { return dec[k].length >= 5; });
+    var dv = dk.map(function (k) { return +(dec[k].reduce(function (s, x) { return s + x; }, 0) / dec[k].length).toFixed(2); });
+    mk('exDecades', { type: 'bar', data: { labels: dk.map(function (k) { return k + 's'; }), datasets: [{ label: 'Decade mean \u00b0C', data: dv, backgroundColor: dv.map(function (v) { return b != null ? ES.divColor(v - b, 1.5) : C.sky; }) }] }, options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: false } } } });
+    var lo = Math.floor(d.minimum), hi = Math.ceil(d.maximum), bins = []; for (var t = lo; t < hi; t += 0.5) bins.push(t);
+    mk('exHist', { type: 'bar', data: { labels: bins.map(function (t) { return t.toFixed(1); }), datasets: [{ label: 'Years', data: bins.map(function (t) { return d.points.filter(function (p) { return p[1] >= t && p[1] < t + 0.5; }).length; }), backgroundColor: ES.grad(C.violet, .9, .3) }] }, options: { plugins: { legend: { display: false } }, scales: { x: { title: { display: true, text: '\u00b0C band' } } } } });
+  }
+  document.getElementById('country').addEventListener('change', function (e) { loadCountry(e.target.value); });
+  document.querySelectorAll('.qc').forEach(function (b) { b.onclick = function () { loadCountry(b.textContent); }; });
+  document.querySelectorAll('#exRange button').forEach(function (b) { b.onclick = function () { document.querySelectorAll('#exRange button').forEach(function (x) { x.classList.toggle('on', x === b); }); from = +b.dataset.f; draw(); }; });
+  var q = new URLSearchParams(location.search).get('country');
+  loadCountry(q && [].some.call(document.getElementById('country').options, function (o) { return o.value === q; }) ? q : 'Pakistan');
+})();
 </script>
 {% endblock %}

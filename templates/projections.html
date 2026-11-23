@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Projections - EarthScape Climate Agency{% endblock %}
+{% block page_title %}Climate Projections &middot; 2 to 10 years{% endblock %}
+{% block page_sub %}Trend + seasonality model on 55+ years of ERA5, cross-checked with CMIP6 climate models and backtested{% endblock %}
+{% block content %}
+<section class="orbit-hero reveal" style="min-height:250px">
+  <div class="oh-copy">
+    <div class="eyebrow">From 14 days to 10 years</div>
+    <h1 style="font-size:clamp(26px,3vw,38px);margin:10px 0 8px;color:#fff">Where is the climate heading?</h1>
+    <p class="oh-lead">Weather forecasts stop being useful after about two weeks. Climate is different: the <b>average</b> of many days follows a trend we can measure. Pick any place and we project its monthly and yearly mean temperature and rainfall up to 10 years ahead, with honest ranges.</p>
+    <div class="oh-mini">
+      <div class="m"><b>16 d</b><span>daily weather (Present)</span></div>
+      <div class="m"><b>10 y</b><span>climate outlook</span></div>
+      <div class="m"><b>2050</b><span>CMIP6 models</span></div>
+    </div>
+  </div>
+  <div class="oh-earth" style="min-height:250px"><div class="earth3d" data-earth='{"lat":30,"lng":70,"altitude":1.9,"speed":0.4}'></div></div>
+</section>
+
+<div class="panel" style="z-index:3">
+  <div class="phead" style="align-items:flex-end">
+    <div style="flex:1;min-width:260px">
+      <h2>Choose a place</h2>
+      <p class="sub">Any city or country. Pakistan's major cities are one click away.</p>
+      <div class="g-search" style="width:100%;max-width:440px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="pSearch" type="search" placeholder="Type a city or country and press Enter&hellip;" autocomplete="off">
+        <div class="g-sugg" id="pSugg"></div>
+      </div>
+    </div>
+    <div><label style="margin-top:0">Horizon</label><div class="seg" id="pHorizon"><button data-y="2">2y</button><button data-y="3">3y</button><button data-y="5">5y</button><button data-y="7">7y</button><button data-y="10" class="on">10y</button></div></div>
+    <button type="button" class="chip" id="pCsv" style="height:36px">&#8681; Download CSV</button>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px" id="pChips"></div>
+</div>
+<div class="panel" style="padding:14px 18px"><div class="phead" style="margin:0"><div><h2 id="pTitle">Karachi, Pakistan</h2><p class="sub" id="pSub" style="margin:0">&nbsp;</p></div><a class="chip" id="pGlobe" href="/globe">Open on globe &rarr;</a></div></div>
+<div id="projBody"></div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='es/place.js') }}"></script>
+<script>
+(function () {
+  var QUICK = [['Karachi', 24.86, 67.01], ['Lahore', 31.55, 74.34], ['Islamabad', 33.69, 73.06], ['Peshawar', 34.01, 71.58], ['Quetta', 30.18, 66.99], ['Multan', 30.2, 71.47], ['Jacobabad', 28.28, 68.44], ['Dubai', 25.2, 55.27], ['Riyadh', 24.71, 46.68], ['New Delhi', 28.61, 77.21], ['London', 51.51, -0.13], ['New York', 40.71, -74.01]];
+  var body = document.getElementById('projBody'), cur = null, years = 10, data = null, features = [];
+  document.getElementById('pChips').innerHTML = QUICK.map(function (q, i) { return '<button type="button" class="chip" data-i="' + i + '">' + q[0] + '</button>'; }).join('');
+  document.querySelectorAll('#pChips button').forEach(function (b) { b.onclick = function () { var q = QUICK[+b.dataset.i]; load({ name: q[0], lat: q[1], lon: q[2] }); }; });
+  document.querySelectorAll('#pHorizon button').forEach(function (b) { b.onclick = function () { document.querySelectorAll('#pHorizon button').forEach(function (x) { x.classList.toggle('on', x === b); }); years = +b.dataset.y; if (cur) load(cur); }; });
+  function load(pl) {
+    cur = pl; window.ES_CONTEXT = { country: pl.country || pl.name, place: pl.name, lat: pl.lat, lon: pl.lon };
+    document.getElementById('pTitle').textContent = pl.name;
+    document.getElementById('pSub').textContent = pl.lat.toFixed(2) + '\u00b0, ' + pl.lon.toFixed(2) + '\u00b0 \u00b7 ' + years + '-year outlook';
+    var qs = 'lat=' + pl.lat + '&lon=' + pl.lon + '&name=' + encodeURIComponent(pl.name);
+    document.getElementById('pGlobe').href = '/globe?' + qs;
+    history.replaceState(null, '', '/projections?' + qs);
+    ES.loading(body, 'Fitting the trend on 55+ years of monthly data, running the 2016\u2192 backtest and fetching CMIP6 models\u2026');
+    ES.loadFuture(pl.lat, pl.lon, years).then(function (d) {
+      if (cur !== pl) return; data = d; ES.renderFuture(body, d, pl.name);
+    }).catch(function (e) { ES.failed(body, e.message, function () { load(pl); }); });
+  }
+  document.getElementById('pCsv').onclick = function () {
+    if (!data) return;
+    var rows = [['month', 'projected_mean_C', 'low80_C', 'high80_C', 'low95_C', 'high95_C', 'rain_mm', 'rain_p10_mm', 'rain_p90_mm']].concat(data.monthly.map(function (m) { return [m.ym, m.t, m.lo80, m.hi80, m.lo95, m.hi95, m.p, m.p_lo, m.p_hi]; }));
+    var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([rows.map(function (r) { return r.join(','); }).join('\n')], { type: 'text/csv' }));
+    a.download = 'earthscape_projection_' + cur.name.replace(/\W+/g, '_') + '.csv'; a.click();
+  };
+  /* search: countries (capital point) + geocoding */
+  var q = document.getElementById('pSearch'), sug = document.getElementById('pSugg'), items = [];
+  fetch(ES.staticBase + 'es/countries.geojson').then(function (r) { return r.json(); }).then(function (g) { features = g.features.map(function (f) { return f.properties; }); });
+  q.addEventListener('input', function () {
+    var t = q.value.trim().toLowerCase(); if (!t) { sug.classList.remove('open'); return; }
+    items = features.filter(function (p) { return p.name.toLowerCase().indexOf(t) >= 0; }).slice(0, 6).map(function (p) { return { label: p.name, sub: (p.kind === 'capital' ? 'capital: ' : '') + p.place, pl: { name: (p.kind === 'capital' ? p.place + ', ' : '') + p.name, country: p.name, lat: p.lat, lon: p.lon } }; });
+    items.push({ label: 'Search "' + q.value.trim() + '"', sub: 'any city', geo: q.value.trim() });
+    sug.innerHTML = items.map(function (it, i) { return '<div data-i="' + i + '">' + it.label + '<small>' + it.sub + '</small></div>'; }).join(''); sug.classList.add('open');
+    sug.querySelectorAll('div').forEach(function (d) { d.onmousedown = function (e) { e.preventDefault(); pick(items[+d.dataset.i]); }; });
+  });
+  q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); if (items.length) pick(items[0].label.toLowerCase() === q.value.trim().toLowerCase() || items.length > 1 ? items[0] : items[items.length - 1]); } });
+  q.addEventListener('blur', function () { setTimeout(function () { sug.classList.remove('open'); }, 150); });
+  function pick(it) {
+    sug.classList.remove('open'); q.value = '';
+    if (it.pl) return load(it.pl);
+    ES.getJSON('/api/geocode?q=' + encodeURIComponent(it.geo), 1440).then(function (p) { load({ name: p.name + (p.country ? ', ' + p.country : ''), country: p.country, lat: p.lat, lon: p.lon }); }).catch(function (e) { ES.failed(body, e.message); });
+  }
+  var ps = new URLSearchParams(location.search);
+  if (ps.get('lat') && ps.get('lon')) load({ name: ps.get('name') || 'Selected place', lat: +ps.get('lat'), lon: +ps.get('lon') });
+  else load({ name: 'Karachi, Pakistan', country: 'Pakistan', lat: 24.86, lon: 67.01 });
+})();
+</script>
+{% endblock %}

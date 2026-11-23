@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% block title %}Upload & Process Data - EarthScape Climate Agency{% endblock %}
+{% block page_title %}Upload &amp; process data{% endblock %}
+{% block page_sub %}Upload a climate CSV and the system processes it live{% endblock %}
 {% block content %}
-<h1>Upload and Process Data</h1>
 <div class="panel">
   <p>Upload a climate CSV file (same format as the project dataset: a <b>dt</b> date column and an
   <b>AverageTemperature</b> column, with an optional <b>Country</b> column). The system processes it
@@ -25,7 +27,7 @@ async function loadSeries(country) {
   chart = new Chart(document.getElementById('upChart'), {type: 'line',
     data: {labels: d.points.map(p => p[0]),
            datasets: [{label: 'Yearly average temperature: ' + d.country, data: d.points.map(p => p[1]),
-                       borderColor: '#1F3864', pointRadius: 0, borderWidth: 1.2}]},
+                       borderColor: ES.C.sky, backgroundColor: ES.grad(ES.C.sky, .3, 0), fill: true, pointRadius: 0, borderWidth: 1.6}]},
     options: {scales: {x: {ticks: {maxTicksLimit: 14}}}}});
 }
 document.getElementById('upBtn').addEventListener('click', async () => {

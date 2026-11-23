@@ -1,83 +1,78 @@
 {% extends "base.html" %}
+{% block title %}Predictions - EarthScape Climate Agency{% endblock %}
+{% block page_title %}Machine-learning predictions{% endblock %}
+{% block page_sub %}Linear regression trend models &middot; time-based train/test split &middot; live prediction for any country{% endblock %}
 {% block content %}
-<h1>Temperature Trend Prediction</h1>
-<div class="panel">
-  <p>A Linear Regression model was trained on Pakistan yearly average temperatures with a time based
-  split (the model is tested only on future years). Model 1 used all history from 1816 and gave a high
-  error. Model 2, trained on the modern record from 1950, reduced the error clearly.</p>
-  <table>
-    <tr><th>Model</th><th>Training years</th><th>Test years</th><th>RMSE</th><th>R squared</th></tr>
-    <tr><td>Model 1</td><td>1816 to 2000</td><td>2001 to 2013</td><td>0.87 C</td><td>-5.906</td></tr>
-    <tr><td><b>Model 2 (improved)</b></td><td>1950 to 2000</td><td>2001 to 2013</td><td><b>0.52 C</b></td><td>-1.447</td></tr>
-  </table>
-  <p>The negative R squared shows that a straight trend line cannot explain year to year variation;
-  the model is used for the long term trend and future estimates.</p>
+<div class="kpis">
+  <div class="kpi reveal" style="--c:var(--green)"><div class="k-lab"><i></i>Model 2 test error</div><div class="k-num"><span data-count="0.52" data-dec="2">0.52</span><small>&deg;C RMSE</small></div><div class="k-sub">trained 1950&ndash;2000, tested 2001&ndash;2013</div></div>
+  <div class="kpi reveal" style="--c:var(--red)"><div class="k-lab"><i></i>Model 1 test error</div><div class="k-num">0.87<small>&deg;C RMSE</small></div><div class="k-sub">all history from 1816</div></div>
+  <div class="kpi reveal" style="--c:var(--sky)"><div class="k-lab"><i></i>Error reduction</div><div class="k-num"><span data-count="40" data-dec="0">40</span><small>%</small></div><div class="k-sub">Model 2 vs Model 1</div></div>
+  <div class="kpi reveal" style="--c:var(--violet)"><div class="k-lab"><i></i>Pakistan 2050</div><div class="k-num">{{ model.forecasts['2050'] }}<small>&deg;C</small></div><div class="k-sub">{{ '%+.3f'|format(model.slope * 10) }} &deg;C per decade</div></div>
 </div>
 
-<div class="panel">
-  <h2>Live Prediction Tool</h2>
-  <p>Select a country or region, enter any future year, and the model calculates its prediction on the spot.
-  Pakistan uses the official Model 2 above. For every other country the same method (a linear trend fitted
-  on yearly data from 1950) is calculated live from the project dataset:</p>
-  <label>Country / Region</label>
-  <select id="predCountry" style="max-width:260px">
-    {% for c in countries %}
-    <option value="{{ c }}" {% if c == 'Pakistan' %}selected{% endif %}>{{ c }}</option>
-    {% endfor %}
-  </select>
-  <label>Year (2014 to 2100)</label>
-  <input type="number" id="predYear" value="2035" min="2014" max="2100" style="max-width:200px">
-  <button type="button" id="predBtn">Predict</button>
-  <div id="predResult" class="statsline"></div>
-  <div id="countryFc"></div>
-</div>
-<script>
-async function loadCountryForecasts() {
-  const c = document.getElementById('predCountry').value;
-  const box = document.getElementById('countryFc');
-  const r = await fetch('/api/country-model/' + encodeURIComponent(c));
-  const d = await r.json();
-  if (d.error) { box.innerHTML = '<p>' + d.error + '</p>'; return; }
-  box.innerHTML = '<h3>Future predictions for ' + d.country + '</h3>' +
-    '<table><tr><th>Year</th><th>Predicted average temperature</th></tr>' +
-    '<tr><td>2030</td><td>' + d.forecasts['2030'] + ' C</td></tr>' +
-    '<tr><td>2040</td><td>' + d.forecasts['2040'] + ' C</td></tr>' +
-    '<tr><td>2050</td><td>' + d.forecasts['2050'] + ' C</td></tr></table>' +
-    '<p>Data years used: ' + d.years_used + '. ' + d.note + '</p>';
-}
-document.getElementById('predCountry').addEventListener('change', loadCountryForecasts);
-loadCountryForecasts();
-document.getElementById('predBtn').addEventListener('click', async () => {
-  const y = document.getElementById('predYear').value;
-  const c = document.getElementById('predCountry').value;
-  const r = await fetch('/api/predict?year=' + encodeURIComponent(y) + '&country=' + encodeURIComponent(c));
-  const d = await r.json();
-  document.getElementById('predResult').textContent = d.error ? d.error :
-    'Predicted average temperature of ' + d.country + ' in ' + d.year + ': ' + d.prediction + ' C  (' + d.note + ')';
-});
-</script>
-<div class="grid2">
-  <div class="panel">
-    <h2>Test Years: Actual vs Predicted</h2>
-    <canvas id="testChart"></canvas>
+<div class="grid-7-5">
+  <div class="panel reveal">
+    <div class="phead"><div><h2>Test years: actual vs predicted</h2><p class="sub">Model 2 never saw 2001&ndash;2013 while training.</p></div><span class="tag">time-based split</span></div>
+    <div class="chartbox"><canvas id="testChart"></canvas></div>
   </div>
-  <div class="panel">
-    <h2>Future Predictions (Model 2)</h2>
-    <table>
-      <tr><th>Year</th><th>Predicted average temperature</th></tr>
-      {% for y in ['2030', '2040', '2050'] %}
-      <tr><td>{{ y }}</td><td>{{ model.forecasts[y] }} C</td></tr>
-      {% endfor %}
-    </table>
-    <p>Pakistan is predicted to keep warming slowly, reaching about <b>22.07 C by 2050</b>.</p>
+  <div class="panel reveal">
+    <div class="phead"><div><h2>Model comparison</h2><p class="sub">Test RMSE (lower is better) and R&sup2;.</p></div></div>
+    <div class="chartbox"><canvas id="cmpChart"></canvas></div>
+    <p class="note">A negative R&sup2; means a straight line cannot explain year-to-year swings; the model is used for the long-term direction.</p>
   </div>
 </div>
+
+<div class="panel reveal">
+  <div class="phead"><div><h2>Live prediction tool</h2><p class="sub">Pick a country and any year from 2014 to 2100. Pakistan uses the official Model 2; other countries use the same method fitted live on their yearly data from 1950.</p></div>
+  <a class="chip" href="{{ url_for('projections_page') }}">New: 2&ndash;10 year projections with ranges &rarr;</a></div>
+  <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+    <div style="min-width:220px;flex:1;max-width:320px"><label>Country / region</label>
+      <select id="predCountry">{% for c in countries %}<option value="{{ c }}" {% if c == 'Pakistan' %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>
+    <div style="width:160px"><label>Year</label><input type="number" id="predYear" value="2035" min="2014" max="2100"></div>
+    <button type="button" id="predBtn" style="margin:0;height:42px">Predict</button>
+  </div>
+  <div id="predResult" class="statsline" style="margin-top:12px"></div>
+  <div class="grid2" style="margin-top:8px">
+    <div><div class="chartbox"><canvas id="fcChart"></canvas></div></div>
+    <div id="countryFc"></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
 <script>
-const ty = {{ model.test_years|tojson }};
-new Chart(document.getElementById('testChart'), {type: 'line',
-  data: {labels: ty.map(r => r[0]), datasets: [
-    {label: 'Actual', data: ty.map(r => r[1]), borderColor: '#1F3864', pointRadius: 3},
-    {label: 'Predicted', data: ty.map(r => r[2]), borderColor: '#C00000', pointRadius: 3, borderDash: [5, 4]}
-  ]}});
+(function () {
+  var C = ES.C, ty = {{ model.test_years|tojson }}, fcChart;
+  ES.chart('testChart', { type: 'line', data: { labels: ty.map(function (r) { return r[0]; }), datasets: [
+    { label: 'Actual', data: ty.map(function (r) { return r[1]; }), borderColor: C.sky, backgroundColor: ES.grad(C.sky, .25, 0), fill: true, pointRadius: 3 },
+    { label: 'Predicted (Model 2)', data: ty.map(function (r) { return r[2]; }), borderColor: C.red, borderDash: [5, 4], pointRadius: 3, tension: 0 }] },
+    options: { plugins: { tooltip: { callbacks: { afterBody: function (it) { var r = ty[it[0].dataIndex]; return ['Error: ' + ES.sign(r[2] - r[1]) + ' \u00b0C']; } } } } } });
+  ES.chart('cmpChart', { type: 'bar', data: { labels: ['Model 1 (1816-2000)', 'Model 2 (1950-2000)'], datasets: [
+    { label: 'RMSE \u00b0C', data: [0.87, 0.52], backgroundColor: [ES.alpha(C.red, .8), ES.alpha(C.green, .85)], barThickness: 46, yAxisID: 'y' },
+    { label: 'R\u00b2', data: [-5.906, -1.447], backgroundColor: [ES.alpha(C.red, .3), ES.alpha(C.green, .3)], barThickness: 46, yAxisID: 'y1' }] },
+    options: { scales: { y: { beginAtZero: true, title: { display: true, text: 'RMSE \u00b0C' } }, y1: { position: 'right', grid: { display: false }, title: { display: true, text: 'R\u00b2' } } } } });
+  function showFc(d) {
+    var yrs = ['2030', '2040', '2050'];
+    document.getElementById('countryFc').innerHTML = '<div class="insights-row">' + yrs.map(function (y) { return '<div class="insight"><span class="ico">' + y.slice(2) + '</span><div><b>' + d.forecasts[y] + ' \u00b0C</b><span>' + d.country + ' in ' + y + '</span></div></div>'; }).join('') + '</div><p class="note" style="margin-top:10px">Data years used: ' + d.years_used + '. ' + d.note + '</p>';
+    if (fcChart && fcChart.chart) fcChart.chart.destroy();
+    fcChart = ES.now('fcChart', { type: 'bar', data: { labels: yrs, datasets: [{ label: d.country + ' predicted \u00b0C', data: yrs.map(function (y) { return d.forecasts[y]; }), backgroundColor: [ES.alpha(C.amber, .8), ES.alpha(C.pink, .8), ES.alpha(C.red, .85)], barThickness: 54 }] },
+      options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: false } } } });
+  }
+  async function loadCountryForecasts() {
+    var c = document.getElementById('predCountry').value, box = document.getElementById('countryFc');
+    box.innerHTML = '<div class="skeleton" style="height:120px"></div>';
+    var r = await fetch('/api/country-model/' + encodeURIComponent(c)), d = await r.json();
+    if (d.error) { box.innerHTML = '<div class="errbox">' + d.error + '</div>'; return; }
+    showFc(d);
+  }
+  document.getElementById('predCountry').addEventListener('change', loadCountryForecasts);
+  loadCountryForecasts();
+  document.getElementById('predBtn').addEventListener('click', async function () {
+    var b = this, y = document.getElementById('predYear').value, c = document.getElementById('predCountry').value, out = document.getElementById('predResult');
+    b.disabled = true; out.innerHTML = '<span class="spinner"></span>';
+    var r = await fetch('/api/predict?year=' + encodeURIComponent(y) + '&country=' + encodeURIComponent(c)), d = await r.json();
+    b.disabled = false;
+    out.innerHTML = d.error ? '<div class="errbox">' + d.error + '</div>' : '<div class="insight" style="max-width:640px"><span class="ico" style="color:var(--green);background:rgba(43,217,107,.14)">\u2713</span><div><b>' + d.prediction + ' \u00b0C</b><span>Predicted average temperature of ' + d.country + ' in ' + d.year + '. ' + d.note + '</span></div></div>';
+  });
+})();
 </script>
 {% endblock %}

@@ -1,0 +1,35 @@
+{% macro field(id, name, label, type='text', icon='user', value='', auto='', extra='') %}
+<div class="fl">
+  <span class="fl-ic">{{ aicon(icon) }}</span>
+  <input id="{{ id }}" name="{{ name }}" type="{{ type }}" placeholder=" " value="{{ value }}" {% if auto %}autocomplete="{{ auto }}"{% endif %} required {{ extra|safe }}>
+  <label for="{{ id }}">{{ label }}</label>
+  {% if type == 'password' %}<button type="button" class="eye" data-toggle-pw="{{ id }}{{ kwargs.get('pair', '') }}" aria-label="Show password" aria-pressed="false">{{ aicon('eye') }}{{ aicon('eyeoff') }}</button><span class="capsnote">Caps Lock is on</span>{% endif %}
+  <span class="fl-line"></span>
+</div>
+{% endmacro %}
+{% macro aicon(n) %}<svg class="ai ai-{{ n }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{% if n == 'user' %}<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/>
+{% elif n == 'lock' %}<rect x="4" y="10.5" width="16" height="10.5" rx="2.5"/><path d="M8 10.5V7a4 4 0 018 0v3.5"/>
+{% elif n == 'mail' %}<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3.5 6.5l8.5 6.5 8.5-6.5"/>
+{% elif n == 'id' %}<rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="11" r="2.5"/><path d="M5.5 17c.6-2 2-3 3.5-3s2.9 1 3.5 3M14.5 9.5h4M14.5 13h3"/>
+{% elif n == 'eye' %}<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>
+{% elif n == 'eyeoff' %}<path d="M3 3l18 18"/><path d="M10.6 5.1A10.6 10.6 0 0112 5c6.4 0 10 7 10 7a18 18 0 01-3.2 4.2M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a9.7 9.7 0 005.4-1.6"/><path d="M9.9 9.9a3 3 0 004.2 4.2"/>
+{% elif n == 'chart' %}<path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/><circle cx="19" cy="6" r="1.3" fill="currentColor"/>
+{% elif n == 'shield' %}<path d="M12 3l8 3v6c0 4.6-3.4 8.3-8 9-4.6-.7-8-4.4-8-9V6l8-3z"/><path d="M8.8 12.2l2.2 2.2 4.4-4.6"/>
+{% elif n == 'check' %}<path d="M5 12.5l4.5 4.5L19 7.5"/>
+{% elif n == 'arrow' %}<path d="M5 12h14M13 6l6 6-6 6"/>
+{% elif n == 'alert' %}<circle cx="12" cy="12" r="9.5"/><path d="M12 7.5v5.5M12 16.5v.01"/>
+{% endif %}</svg>{% endmacro %}
+{% macro roles(selected='Analyst', signup=False) %}
+<fieldset class="roles" role="radiogroup" aria-label="Sign in as">
+  <legend>{{ 'Account type' if signup else 'Sign in as' }}</legend>
+  <label class="role">
+    <input type="radio" name="role" value="Analyst" {% if selected == 'Analyst' %}checked{% endif %}>
+    <span class="role-card"><span class="role-ic">{{ aicon('chart') }}</span><span class="role-txt"><b>Analyst</b><small>{{ 'Explore, predict, chat' if not signup else 'Full analysis access' }}</small></span><span class="role-tick">{{ aicon('check') }}</span></span>
+  </label>
+  <label class="role{% if signup %} locked{% endif %}" {% if signup %}title="Administrator accounts are created by an existing administrator"{% endif %}>
+    <input type="radio" name="role" value="Administrator" {% if selected == 'Administrator' %}checked{% endif %} {% if signup %}disabled{% endif %}>
+    <span class="role-card"><span class="role-ic">{{ aicon('shield') }}</span><span class="role-txt"><b>Administrator</b><small>{{ 'Invite only' if signup else 'Users, thresholds, data' }}</small></span><span class="role-tick">{{ aicon('lock' if signup else 'check') }}</span></span>
+  </label>
+</fieldset>
+{% endmacro %}

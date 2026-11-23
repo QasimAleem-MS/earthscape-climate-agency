@@ -13,9 +13,11 @@ from flask import Flask, render_template, request, redirect, url_for, session, j
 from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import csv, io, json, os, re, secrets, statistics, tempfile, time, urllib.parse, urllib.request, uuid
+import climate_lib
+from analyst import Analyst
 
 app = Flask(__name__)
-app.secret_key = "earthscape-secret-key"
+app.secret_key = os.environ.get("SECRET_KEY", "earthscape-secret-key")
 BASE = os.path.dirname(os.path.abspath(__file__))
 
 def load(name):
@@ -29,6 +31,11 @@ ANOM_PER_YEAR = load("anomalies_per_year.json")
 CO2 = load("co2.json")
 BASELINE = load("pakistan_baseline.json")
 MONTHS_CHECKED = load("months_checked.json")
+RECENT = load("recent_data.json")
+with open(os.path.join(BASE, "static", "es", "countries.geojson")) as _f:
+    COUNTRY_GEO = {ft["properties"]["name"].lower(): ft["properties"] for ft in json.load(_f)["features"]}
+ANALYST = Analyst(YEARLY, MODEL, MONTHS_CHECKED, CO2, RECENT, COUNTRY_GEO)
+FIRST_YEAR = min(p[0][0] for p in YEARLY.values() if p)
 SETTINGS_FILE = os.path.join(BASE, "data", "settings.json")
 _threshold_global = [None]
 
@@ -47,7 +54,11 @@ MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July",
 
 @app.context_processor
 def inject_alert_count():
-    return {"alert_count": len(ALERTS)}
+    return {"alert_count": len(ALERTS), "site_stats": {"countries": len(YEARLY), "first_year": FIRST_YEAR,
+            "globe_countries": len(COUNTRY_GEO), "records": "10M+"}}
+
+def wants_json():
+    return request.headers.get("X-Requested-With") == "fetch" or request.accept_mimetypes.best == "application/json"
 
 # ---------------- Users and roles ----------------
 USERS_FILE = os.path.join(BASE, "data", "users.json")
@@ -121,13 +132,24 @@ def login():
     if request.method == "POST":
         u = request.form.get("username", "").strip()
         p = request.form.get("password", "")
+        picked = request.form.get("role", "")
         user = USERS.get(u)
         if user and check_password_hash(user["password"], p):
+            if picked in ("Analyst", "Administrator") and picked != user["role"]:
+                msg = "This is an %s account. Choose %s above and sign in again." % (user["role"], user["role"])
+                if wants_json():
+                    return jsonify({"ok": False, "error": msg, "field": "role"}), 400
+                flash(msg, "error")
+                return redirect(url_for("login"))
             get_flashed_messages()  # never carry an old error past a good login
             session["user"] = u
             session["role"] = user["role"]
             session["name"] = user["name"]
+            if wants_json():
+                return jsonify({"ok": True, "redirect": url_for("dashboard"), "name": user["name"], "role": user["role"]})
             return redirect(url_for("dashboard"))
+        if wants_json():
+            return jsonify({"ok": False, "error": "Invalid username or password."}), 401
         flash("Invalid username or password.", "error")
         return redirect(url_for("login"))
     # A successful login, or landing here while already signed in, must never
@@ -167,6 +189,8 @@ def signup():
         elif pw != confirm_pw:
             problem = "The two passwords do not match. Please type them again."
         if problem:
+            if wants_json():
+                return jsonify({"ok": False, "error": problem}), 400
             flash(problem, "error")
             return render_template("signup.html", full_name=full_name, email=email, username=u)
         USERS[u] = {"password": generate_password_hash(pw), "role": "Analyst",
@@ -176,6 +200,8 @@ def signup():
         session["role"] = "Analyst"
         session["name"] = full_name
         flash("Welcome to EarthScape, %s. Your account has been created." % full_name)
+        if wants_json():
+            return jsonify({"ok": True, "redirect": url_for("dashboard"), "name": full_name})
         return redirect(url_for("dashboard"))
     return render_template("signup.html")
 
@@ -229,7 +255,48 @@ def dashboard():
     pak = YEARLY["Pakistan"]
     return render_template("dashboard.html", stats=stats, pakistan=pak,
                            model=MODEL, anom_per_year=ANOM_PER_YEAR,
-                           recent=load("recent_data.json"))
+                           recent=RECENT, dash=dashboard_data())
+
+COMPARE_COUNTRIES = ["Pakistan", "India", "Afghanistan", "Iran", "China", "Saudi Arabia",
+                     "United Arab Emirates", "Bangladesh", "United Kingdom", "United States", "Russia", "Brazil"]
+
+def dashboard_data():
+    """Everything the dashboard charts need, computed from the project data."""
+    pak = dict(YEARLY["Pakistan"])
+    base = statistics.mean(t for y, t in pak.items() if 1951 <= y <= 1980)
+    stripes = [[y, round(t - base, 2)] for y, t in sorted(pak.items()) if y >= 1900]
+    # month x year heatmap of Pakistan anomalies (2001 to 2013) from the checked months
+    heat = [[r[0][:4], int(r[0][5:7]), r[3]] for r in MONTHS_CHECKED]
+    # warming rate per decade for comparison countries (1950 to 2013)
+    rates = []
+    for c in COMPARE_COUNTRIES:
+        pts = [p for p in YEARLY.get(c, []) if p[0] >= 1950]
+        fit = climate_lib.ols([p[0] for p in pts], [p[1] for p in pts])
+        if fit:
+            b = [t for y, t in pts if 1951 <= y <= 1980]
+            last = [t for y, t in pts if y >= 2004]
+            rates.append({"country": c, "per_decade": round(fit["b"] * 10, 3),
+                          "warming": round(statistics.mean(last) - statistics.mean(b), 2) if b and last else None,
+                          "mean": round(statistics.mean(t for _, t in pts), 2)})
+    rates.sort(key=lambda r: r["per_decade"], reverse=True)
+    # countries warming the most overall (1951-1980 vs 2004-2013), from all project countries
+    warm_all = []
+    for c, pts in YEARLY.items():
+        b = [t for y, t in pts if 1951 <= y <= 1980]
+        last = [t for y, t in pts if y >= 2004]
+        if len(b) >= 25 and len(last) >= 8:
+            warm_all.append([c, round(statistics.mean(last) - statistics.mean(b), 2)])
+    warm_all.sort(key=lambda r: r[1], reverse=True)
+    rec = RECENT["pakistan_yearly"]
+    yrs = sorted(rec)
+    yoy = [[y, round(rec[y] - rec[p], 2)] for p, y in zip(yrs, yrs[1:])]
+    errs = [[y, round(p - a, 2)] for y, a, p in MODEL["test_years"]]
+    return {"stripes": stripes, "baseline": round(base, 2), "heat": heat, "rates": rates,
+            "top_warming": warm_all[:10], "warming_count": sum(1 for r in warm_all if r[1] > 0),
+            "warming_total": len(warm_all), "yoy": yoy, "errors": errs,
+            "climatology": [BASELINE[str(m)] for m in range(1, 13)],
+            "extremes": sorted(MONTHS_CHECKED, key=lambda r: -r[3])[:8],
+            "pak_last": stripes[-1], "warmest": max(stripes, key=lambda r: r[1])}
 
 # ---------------- Data explorer ----------------
 @app.route("/explorer")
@@ -730,6 +797,180 @@ def api_weather_months():
     return jsonify({"city": place.get("name"), "country": place.get("country", ""),
                     "year": year, "months": months, "source": "Open-Meteo, a free weather service"})
 
+# ---------------- Globe, projections and live data (Open-Meteo, cached) ----------------
+LIVE_CITIES = [
+    ("Karachi", "Pakistan", 24.86, 67.01), ("Lahore", "Pakistan", 31.55, 74.34), ("Islamabad", "Pakistan", 33.69, 73.06),
+    ("Peshawar", "Pakistan", 34.01, 71.58), ("Quetta", "Pakistan", 30.18, 66.99), ("Multan", "Pakistan", 30.2, 71.47),
+    ("Jacobabad", "Pakistan", 28.28, 68.44), ("Gilgit", "Pakistan", 35.92, 74.31),
+    ("Dubai", "UAE", 25.2, 55.27), ("Riyadh", "Saudi Arabia", 24.71, 46.68), ("Doha", "Qatar", 25.29, 51.53),
+    ("New Delhi", "India", 28.61, 77.21), ("Mumbai", "India", 19.08, 72.88), ("Dhaka", "Bangladesh", 23.81, 90.41),
+    ("Kabul", "Afghanistan", 34.53, 69.17), ("Tehran", "Iran", 35.69, 51.39), ("Cairo", "Egypt", 30.04, 31.24),
+    ("Istanbul", "Turkey", 41.01, 28.98), ("Moscow", "Russia", 55.76, 37.62), ("London", "UK", 51.51, -0.13),
+    ("Paris", "France", 48.86, 2.35), ("Berlin", "Germany", 52.52, 13.41), ("Oslo", "Norway", 59.91, 10.75),
+    ("Reykjavik", "Iceland", 64.15, -21.94), ("New York", "USA", 40.71, -74.01), ("Los Angeles", "USA", 34.05, -118.24),
+    ("Mexico City", "Mexico", 19.43, -99.13), ("Toronto", "Canada", 43.65, -79.38), ("Sao Paulo", "Brazil", -23.55, -46.63),
+    ("Buenos Aires", "Argentina", -34.6, -58.38), ("Lima", "Peru", -12.05, -77.04), ("Lagos", "Nigeria", 6.52, 3.38),
+    ("Nairobi", "Kenya", -1.29, 36.82), ("Johannesburg", "South Africa", -26.2, 28.05), ("Beijing", "China", 39.9, 116.4),
+    ("Shanghai", "China", 31.23, 121.47), ("Tokyo", "Japan", 35.68, 139.69), ("Seoul", "South Korea", 37.57, 126.98),
+    ("Bangkok", "Thailand", 13.76, 100.5), ("Singapore", "Singapore", 1.35, 103.82), ("Jakarta", "Indonesia", -6.2, 106.85),
+    ("Manila", "Philippines", 14.6, 120.98), ("Sydney", "Australia", -33.87, 151.21), ("Auckland", "New Zealand", -36.85, 174.76),
+]
+
+def _latlon():
+    try:
+        lat = float(request.args.get("lat", "")); lon = float(request.args.get("lon", ""))
+    except ValueError:
+        return None
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return None
+    return lat, lon
+
+def _service_error(e):
+    msg = str(e)
+    if "limit" in msg.lower() or "429" in msg:
+        return jsonify({"error": "The free Open-Meteo service is rate-limiting us for a minute. Please try again shortly."}), 503
+    return jsonify({"error": "The climate data service did not respond. Please try again in a moment."}), 502
+
+@app.route("/globe")
+@login_required
+def globe_page():
+    return render_template("globe.html")
+
+@app.route("/projections")
+@login_required
+def projections_page():
+    return render_template("projections.html")
+
+@app.route("/api/place/past")
+@login_required
+def api_place_past():
+    ll = _latlon()
+    if not ll:
+        return jsonify({"error": "Valid lat and lon are required."}), 400
+    try:
+        return jsonify(climate_lib.past_summary(*ll))
+    except Exception as e:
+        return _service_error(e)
+
+@app.route("/api/place/present")
+@login_required
+def api_place_present():
+    ll = _latlon()
+    if not ll:
+        return jsonify({"error": "Valid lat and lon are required."}), 400
+    try:
+        return jsonify(climate_lib.present(*ll))
+    except Exception as e:
+        return _service_error(e)
+
+@app.route("/api/place/projection")
+@login_required
+def api_place_projection():
+    ll = _latlon()
+    if not ll:
+        return jsonify({"error": "Valid lat and lon are required."}), 400
+    try:
+        years = int(request.args.get("years", 10))
+    except ValueError:
+        years = 10
+    try:
+        return jsonify(climate_lib.projection(ll[0], ll[1], years, with_cmip=False))
+    except Exception as e:
+        return _service_error(e)
+
+NE_TO_BERKELEY = {"Dem. Rep. Congo": "Congo (Democratic Republic Of The)", "Falkland Is.": "Falkland Islands (Islas Malvinas)",
+                  "Guinea-Bissau": "Guinea Bissau", "Myanmar": "Burma", "Palestine": "Palestina", "Timor-Leste": "Timor Leste",
+                  "S. Sudan": "Sudan", "Somaliland": "Somalia", "N. Cyprus": "Cyprus", "Kosovo": "Serbia", "Antarctica": "Antarctica"}
+
+def berkeley_name(ne_props):
+    low = {k.lower(): k for k in YEARLY}
+    for cand in (ne_props.get("name", ""), ne_props.get("long", "")):
+        if cand.lower() in low:
+            return low[cand.lower()]
+    return NE_TO_BERKELEY.get(ne_props.get("name"))
+
+_WARMING_MAP = {}
+
+@app.route("/api/warming-map")
+@login_required
+def api_warming_map():
+    """Warming per globe country from the project data: 2004-2013 mean minus
+    1951-1980 mean, plus the 1950-2013 trend per decade."""
+    if not _WARMING_MAP:
+        for key, props in COUNTRY_GEO.items():
+            bname = berkeley_name(props)
+            pts = YEARLY.get(bname or "", [])
+            b = [t for y, t in pts if 1951 <= y <= 1980]
+            last = [t for y, t in pts if y >= 2004]
+            if len(b) >= 20 and len(last) >= 5:
+                fit = climate_lib.ols([y for y, _ in pts if y >= 1950], [t for y, t in pts if y >= 1950])
+                _WARMING_MAP[props["name"]] = {"warming": round(statistics.mean(last) - statistics.mean(b), 2),
+                                               "per_decade": round(fit["b"] * 10, 3) if fit else None,
+                                               "dataset_name": bname, "mean": round(statistics.mean(t for _, t in pts if _ >= 1950), 2)}
+    return jsonify(_WARMING_MAP)
+
+@app.route("/api/place/cmip6")
+@login_required
+def api_place_cmip6():
+    ll = _latlon()
+    if not ll:
+        return jsonify({"error": "Valid lat and lon are required."}), 400
+    try:
+        return jsonify(climate_lib.cmip6_for(ll[0], ll[1], int(request.args.get("years", 10) or 10)))
+    except Exception as e:
+        return _service_error(e)
+
+@app.route("/api/geocode")
+@login_required
+def api_geocode():
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify({"error": "Type a place."}), 400
+    try:
+        p = climate_lib.geocode(q)
+    except Exception as e:
+        return _service_error(e)
+    if not p:
+        return jsonify({"error": "Place not found."}), 404
+    return jsonify({"name": p.get("name"), "country": p.get("country", ""), "lat": p["latitude"], "lon": p["longitude"]})
+
+@app.route("/api/live-cities")
+@login_required
+def api_live_cities():
+    try:
+        rows = climate_lib.live_cities(LIVE_CITIES)
+    except Exception as e:
+        return _service_error(e)
+    have = [r for r in rows if r["temp"] is not None]
+    return jsonify({"cities": rows, "updated": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
+                    "hottest": max(have, key=lambda r: r["temp"]) if have else None,
+                    "coldest": min(have, key=lambda r: r["temp"]) if have else None,
+                    "windiest": max(have, key=lambda r: r["wind"] or 0) if have else None,
+                    "reporting": len(have), "total": len(rows)})
+
+@app.route("/api/public/pulse")
+def api_public_pulse():
+    """Tiny public endpoint for the sign-in page: Karachi right now."""
+    try:
+        p = climate_lib.present(24.86, 67.01)
+        return jsonify({"city": "Karachi", "temp": p["current"]["temp"], "sky": p["current"]["sky"]})
+    except Exception:
+        return jsonify({"city": "Karachi", "temp": None})
+
+@app.route("/api/chat", methods=["POST"])
+@login_required
+def api_chat():
+    body = request.get_json(silent=True) or {}
+    q = str(body.get("message", "")).strip()
+    if not q:
+        return jsonify({"error": "Ask me something about the climate."}), 400
+    try:
+        out = ANALYST.answer(q[:1500], body.get("history") or [], body.get("context") or {})
+    except Exception:
+        out = {"reply": "I hit a snag pulling the data for that one. Try asking about a specific country or city, for example \"How has Karachi warmed since 1980?\"",
+               "chart": None, "provider": "Built-in analyst"}
+    return jsonify(out)
+
 # ---------------- Feedback and support ----------------
 FEEDBACK_FILE = os.path.join(BASE, "data", "feedback.json")
 
@@ -787,7 +1028,7 @@ def admin():
         "feedback_count": len(read_feedback()),
     }
     return render_template("admin.html", users=users, feedback=read_feedback(),
-                           threshold=current_threshold(), stats=stats,
+                           threshold=current_threshold(), stats=stats, months=MONTHS_CHECKED,
                            recovery=[{"username": u,
                                       "minutes_left": max(0, int((r["expires"] - time.time()) // 60))}
                                      for u, r in RECOVERY_REQUESTS.items()

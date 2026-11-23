@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='es/auth.css') }}">{% endblock %}
+{% block content_login %}
+<div class="auth-scene">
+  <div class="auth-earth earth3d" data-earth='{"lat":24,"lng":62,"altitude":1.9,"speed":0.55,"satAlt":0.38,"interactive":true}' aria-hidden="true"></div>
+  <div class="auth-glow" aria-hidden="true"></div>
+  <a class="auth-brand" href="{{ url_for('login') }}"><span class="es-logo"></span><div><b>EarthScape</b><span>Climate Agency</span></div></a>
+  <section class="auth-intro">
+    <h1 class="auth-title">See the planet's climate <span>in real time.</span></h1>
+    <p class="auth-tag">Big-data climate intelligence with a Pakistan focus: 3D globe, live weather for any country, and honest 10-year projections.</p>
+    <div class="auth-stats">
+      <div><b data-count="{{ site_stats.countries }}">{{ site_stats.countries }}</b><span>countries in our data</span></div>
+      <div><b>{{ site_stats.first_year }}<em>&ndash;</em>2026</b><span>years of records</span></div>
+      <div><b data-count="10064718" data-dec="0">10,064,718</b><span>raw records processed</span></div>
+      <div class="pulse" id="authPulse"><b><span class="livedot"></span> <span id="pulseTemp">&ndash;</span></b><span>Karachi right now</span></div>
+    </div>
+  </section>
+  <section class="auth-card-wrap">
+    {% block card %}{% endblock %}
+  </section>
+</div>
+<script>
+(function () {
+  fetch('{{ url_for("api_public_pulse") }}').then(function (r) { return r.json(); }).then(function (d) {
+    if (d && d.temp != null) document.getElementById('pulseTemp').textContent = d.temp.toFixed(1) + '\u00b0C ' + (d.sky ? '\u00b7 ' + d.sky : '');
+    else document.getElementById('authPulse').style.display = 'none';
+  }).catch(function () { document.getElementById('authPulse').style.display = 'none'; });
+  /* shared: password show/hide toggles */
+  document.querySelectorAll('[data-toggle-pw]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var ids = b.getAttribute('data-toggle-pw').split(','), show = document.getElementById(ids[0]).type === 'password';
+      ids.forEach(function (id) { document.getElementById(id).type = show ? 'text' : 'password'; });
+      b.classList.toggle('on', show); b.setAttribute('aria-label', show ? 'Hide password' : 'Show password'); b.setAttribute('aria-pressed', show);
+      document.getElementById(ids[0]).focus();
+    });
+  });
+  /* caps lock hint */
+  document.querySelectorAll('input[type=password]').forEach(function (i) {
+    i.addEventListener('keyup', function (e) { var w = i.closest('.fl'); if (w && e.getModifierState) w.classList.toggle('caps', e.getModifierState('CapsLock')); });
+  });
+})();
+</script>
+{% endblock %}

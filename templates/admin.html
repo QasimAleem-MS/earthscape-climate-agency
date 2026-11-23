@@ -1,6 +1,21 @@
 {% extends "base.html" %}
+{% block title %}Admin - EarthScape Climate Agency{% endblock %}
+{% block page_title %}Administration{% endblock %}
+{% block page_sub %}Users, roles, alert threshold, data health and support inbox{% endblock %}
 {% block content %}
-<h1>Administration</h1>
+<div class="kpis">
+  <div class="kpi reveal" style="--c:var(--sky)"><div class="k-lab"><i></i>Users</div><div class="k-num"><span data-count="{{ users|length }}">{{ users|length }}</span></div><div class="k-sub">{{ users|selectattr('role','equalto','Administrator')|list|length }} admin &middot; {{ users|selectattr('role','equalto','Analyst')|list|length }} analyst</div></div>
+  <div class="kpi reveal" style="--c:var(--red)"><div class="k-lab"><i></i>Alert threshold</div><div class="k-num">{{ threshold }}<small>&deg;C</small></div><div class="k-sub">above the 1951&ndash;1980 normal</div></div>
+  <div class="kpi reveal" style="--c:var(--green)"><div class="k-lab"><i></i>Model RMSE</div><div class="k-num">{{ stats.model_rmse }}<small>&deg;C</small></div><div class="k-sub">Model 2, 2001&ndash;2013</div></div>
+  <div class="kpi reveal" style="--c:var(--amber)"><div class="k-lab"><i></i>Feedback</div><div class="k-num"><span data-count="{{ stats.feedback_count }}">{{ stats.feedback_count }}</span></div><div class="k-sub">submissions received</div></div>
+  <div class="kpi reveal" style="--c:var(--violet)"><div class="k-lab"><i></i>Months checked</div><div class="k-num"><span data-count="{{ stats.months_checked }}">{{ stats.months_checked }}</span></div><div class="k-sub">Pakistan 2001&ndash;2013</div></div>
+</div>
+<div class="grid3">
+  <div class="panel reveal"><div class="phead"><div><h2>Users by role</h2></div></div><div class="chartbox sm"><canvas id="adRoles"></canvas></div></div>
+  <div class="panel reveal"><div class="phead"><div><h2>Data pipeline</h2><p class="sub">Records at each stage (log scale)</p></div></div><div class="chartbox sm"><canvas id="adPipe"></canvas></div></div>
+  <div class="panel reveal"><div class="phead"><div><h2>Alerts at each threshold</h2><p class="sub">Pakistan months that would alert; white dot = current</p></div></div><div class="chartbox sm"><canvas id="adThr"></canvas></div></div>
+</div>
+<div class="grid2">
 <div class="panel">
   <h2>Users and Roles</h2>
   <table>
@@ -32,6 +47,7 @@
   {% for r in recovery %}{{ r.username }} (code expires in about {{ r.minutes_left }} minutes){% if not loop.last %}, {% endif %}{% endfor %}</p>
   {% endif %}
 </div>
+</div>
 <div class="panel">
   <h2>System and Data</h2>
   <table>
@@ -53,4 +69,16 @@
   </table>
   {% else %}<p>No submissions yet.</p>{% endif %}
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var C = ES.C, users = {{ users|tojson }};
+  var roles = {}; users.forEach(function (u) { roles[u.role] = (roles[u.role] || 0) + 1; });
+  ES.chart('adRoles', { type: 'doughnut', data: { labels: Object.keys(roles), datasets: [{ data: Object.values(roles), backgroundColor: [C.sky, C.violet, C.green, C.amber], borderColor: 'rgba(4,7,15,.8)', borderWidth: 3, hoverOffset: 8 }] }, options: { cutout: '68%', interaction: { mode: 'nearest' }, plugins: { legend: { position: 'right' } } } });
+  ES.chart('adPipe', { type: 'bar', data: { labels: ['Raw (5 files)', 'Country file', 'Cleaned'], datasets: [{ label: 'Records', data: [10064718, 577462, 544811], backgroundColor: [ES.alpha(C.sky, .85), ES.alpha(C.cyan, .85), ES.alpha(C.green, .85)] }] }, options: { plugins: { legend: { display: false } }, scales: { y: { type: 'logarithmic', ticks: { callback: function (v) { return v >= 1e6 ? (v / 1e6) + 'M' : v >= 1e3 ? (v / 1e3) + 'k' : v; } } } } } });
+  var months = {{ months|tojson }}, th = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4], cur = {{ threshold }};
+  ES.chart('adThr', { type: 'line', data: { labels: th.map(function (t) { return '+' + t; }), datasets: [{ label: 'Months alerting', data: th.map(function (t) { return months.filter(function (m) { return m[3] >= t; }).length; }), borderColor: C.red, backgroundColor: ES.grad(C.red, .3, 0), fill: true, pointRadius: 4, pointBackgroundColor: th.map(function (t) { return t === cur ? '#fff' : C.red; }) }] }, options: { plugins: { legend: { display: false } }, scales: { x: { title: { display: true, text: 'threshold \u00b0C' } } } } });
+})();
+</script>
 {% endblock %}

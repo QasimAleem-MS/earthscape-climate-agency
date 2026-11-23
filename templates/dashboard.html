@@ -1,77 +1,207 @@
 {% extends "base.html" %}
+{% block title %}Dashboard - EarthScape Climate Agency{% endblock %}
+{% block page_title %}Climate Command Centre{% endblock %}
+{% block page_sub %}Pakistan focus &middot; {{ stats.countries }} countries &middot; live Open-Meteo feed{% endblock %}
 {% block content %}
-<div class="stat-grid">
-  <div class="stat-card">
-    <span class="stat-ic b"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></svg></span>
-    <div><div class="num">{{ stats.total_records }}</div><div class="lab">Total records in our data</div></div>
+<section class="orbit-hero reveal">
+  <div class="oh-copy">
+    <div class="eyebrow">Pakistan is warming</div>
+    <div class="bignum"><span data-count="{{ dash.warmest[1] }}" data-dec="2" data-prefix="+">+{{ dash.warmest[1] }}</span><span class="unit">&deg;C</span></div>
+    <p class="oh-lead">Warmest year in the Berkeley Earth record ({{ dash.warmest[0] }}) versus Pakistan's 1951&ndash;1980 normal of {{ dash.baseline }}&nbsp;&deg;C. ERA5 puts <b>2025 at {{ recent.pakistan_yearly['2025'] }}&nbsp;&deg;C</b>, one of the hottest years yet.</p>
+    <div class="oh-mini">
+      <div class="m"><b>{{ dash.warming_count }}/{{ dash.warming_total }}</b><span>countries warmer</span></div>
+      <div class="m"><b>{{ stats.anomalies }}</b><span>alert months</span></div>
+      <div class="m"><b>{{ stats.forecast_2050 }}&deg;</b><span>Pakistan 2050</span></div>
+      <div class="m"><b>r {{ stats.correlation }}</b><span>CO&#8322; &harr; heat</span></div>
+    </div>
   </div>
-  <div class="stat-card">
-    <span class="stat-ic g"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg></span>
-    <div><div class="num">{{ stats.cleaned_rows }}</div><div class="lab">Clean records we use</div></div>
+  <div class="oh-earth"><div class="earth3d" data-earth='{"lat":28,"lng":68,"altitude":1.75,"speed":0.5}'></div></div>
+</section>
+
+<div class="kpis">
+  <div class="kpi reveal" style="--c:var(--sky)"><div class="k-lab"><i></i>Records processed</div><div class="k-num"><span data-count="10.06" data-dec="2">10.06</span><small>M</small></div><div class="k-sub">{{ stats.cleaned_rows }} clean rows used</div><div class="k-spark"><canvas id="spRecords"></canvas></div></div>
+  <div class="kpi reveal" style="--c:var(--green)"><div class="k-lab"><i></i>Countries covered</div><div class="k-num"><span data-count="{{ stats.countries }}">{{ stats.countries }}</span></div><div class="k-sub">177 clickable on the 3D globe</div><div class="k-spark"><canvas id="spCountries"></canvas></div></div>
+  <div class="kpi reveal" style="--c:var(--red)"><div class="k-lab"><i></i>Very hot months</div><div class="k-num"><span data-count="{{ stats.anomalies }}">{{ stats.anomalies }}</span><small>2001&ndash;13</small></div><div class="k-sub">&ge; 1.5&nbsp;&deg;C above normal</div><div class="k-spark"><canvas id="spAlerts"></canvas></div></div>
+  <div class="kpi reveal" style="--c:var(--amber)"><div class="k-lab"><i></i>CO&#8322; &harr; heat link</div><div class="k-num"><span data-count="{{ stats.correlation }}" data-dec="4">{{ stats.correlation }}</span></div><div class="k-sub">Pearson r, 1959&ndash;2025</div><div class="k-spark"><canvas id="spCo2"></canvas></div></div>
+  <div class="kpi reveal" style="--c:var(--violet)"><div class="k-lab"><i></i>Pakistan in 2050</div><div class="k-num"><span data-count="{{ stats.forecast_2050 }}" data-dec="2">{{ stats.forecast_2050 }}</span><small>&deg;C</small></div><div class="k-sub">Model 2 trend estimate</div><div class="k-spark"><canvas id="spTrend"></canvas></div></div>
+  <div class="kpi reveal" style="--c:var(--cyan)"><div class="k-lab"><i></i>Pakistan 2025 (ERA5)</div><div class="k-num"><span data-count="{{ recent.pakistan_yearly['2025'] }}" data-dec="2">{{ recent.pakistan_yearly['2025'] }}</span><small>&deg;C</small></div><div class="k-sub">{{ '%+.2f'|format(dash.yoy[-1][1]) }}&nbsp;&deg;C vs 2024</div><div class="k-spark"><canvas id="spRecent"></canvas></div></div>
+</div>
+
+<div class="panel reveal">
+  <div class="phead"><div><h2>Warming stripes &middot; Pakistan</h2><p class="sub">One stripe per year, coloured by difference from the 1951&ndash;1980 normal ({{ dash.baseline }}&nbsp;&deg;C). Hover a stripe for the value.</p></div><span class="tag">Berkeley Earth &middot; 1900&ndash;2013</span></div>
+  <div class="chartbox sm"><canvas id="stripes"></canvas></div>
+  <div class="legendbar"></div><div class="legendrow"><span>colder than normal</span><span>normal</span><span>warmer than normal</span></div>
+</div>
+
+<div class="panel reveal" id="liveBoard">
+  <div class="phead"><div><h2><span class="livedot"></span>&nbsp;Live world board</h2><p class="sub">Current conditions for 44 cities, refreshed every 15 minutes from Open-Meteo. Click a row to open it on the globe.</p></div><span class="tag" id="lbUpdated">loading&hellip;</span></div>
+  <div class="kpis" id="lbKpis" style="margin-bottom:14px">
+    <div class="kpi" style="--c:var(--red)"><div class="k-lab"><i></i>Hottest now</div><div class="k-num" id="lbHot">&ndash;</div><div class="k-sub" id="lbHotC">&nbsp;</div></div>
+    <div class="kpi" style="--c:var(--sky)"><div class="k-lab"><i></i>Coldest now</div><div class="k-num" id="lbCold">&ndash;</div><div class="k-sub" id="lbColdC">&nbsp;</div></div>
+    <div class="kpi" style="--c:var(--amber)"><div class="k-lab"><i></i>Windiest</div><div class="k-num" id="lbWind">&ndash;</div><div class="k-sub" id="lbWindC">&nbsp;</div></div>
+    <div class="kpi" style="--c:var(--green)"><div class="k-lab"><i></i>Cities reporting</div><div class="k-num" id="lbRep">&ndash;</div><div class="k-sub">Open-Meteo forecast API</div></div>
   </div>
-  <div class="stat-card">
-    <span class="stat-ic c"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg></span>
-    <div><div class="num">{{ stats.countries }}</div><div class="lab">Countries</div></div>
-  </div>
-  <div class="stat-card">
-    <span class="stat-ic r"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4a2 2 0 10-4 0v9.26a4.5 4.5 0 104 0V4z"/><circle cx="12" cy="17.5" r="1.6" fill="currentColor" stroke="none"/></svg></span>
-    <div><div class="num">{{ stats.anomalies }}</div><div class="lab">Very hot months found (2001 to 2013)</div></div>
-  </div>
-  <div class="stat-card">
-    <span class="stat-ic o"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 14a5 5 0 007.07 0l2.83-2.83a5 5 0 00-7.07-7.07L11 5.9"/><path d="M14 10a5 5 0 00-7.07 0L4.1 12.83a5 5 0 007.07 7.07L13 18.1"/></svg></span>
-    <div><div class="num">{{ stats.correlation }}</div><div class="lab">Link between CO2 gas and heat</div></div>
-  </div>
-  <div class="stat-card">
-    <span class="stat-ic v"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg></span>
-    <div><div class="num">{{ stats.forecast_2050 }} C</div><div class="lab">Pakistan in 2050 (our estimate)</div></div>
+  <div class="grid-5-7">
+    <div class="scrolltable" style="max-height:380px"><table id="lbTable"><thead><tr><th>City</th><th>Temp</th><th>Today</th><th>Rain</th><th>Wind</th><th>Sky</th></tr></thead><tbody><tr><td colspan="6"><div class="skeleton" style="height:300px"></div></td></tr></tbody></table></div>
+    <div class="chartbox lg"><canvas id="lbChart"></canvas></div>
   </div>
 </div>
 
-<div class="panel">
-  <h2 class="panelhead"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.5 8.5 0 01-8.5 8.5c-1.5 0-3-.4-4.2-1.1L3 20l1.1-5.3A8.5 8.5 0 1121 11.5z"/></svg> In simple words</h2>
-  <div class="sumrow"><span class="sumnum">1</span><p>Pakistan is getting hotter, year by year.</p></div>
-  <div class="sumrow"><span class="sumnum">2</span><p>Our computer model says Pakistan will reach about <b>22.07 C in the year 2050</b>.</p></div>
-  <div class="sumrow"><span class="sumnum">3</span><p>From 2001 to 2013, <b>41 months</b> were very hot, much hotter than normal. The hottest of all was <b>March 2010</b>.</p></div>
-  <div class="sumrow last"><span class="sumnum">4</span><p>When CO2 gas goes up, the heat also goes up. This link is very strong: <b>0.9655</b>.</p></div>
+<div class="grid-7-5">
+  <div class="panel reveal">
+    <div class="phead"><div><h2>Temperature trend &amp; model forecast</h2><p class="sub">Yearly mean temperature with the Model 2 linear forecast to 2050.</p></div><span class="tag">RMSE 0.52&nbsp;&deg;C</span></div>
+    <div class="chartbox"><canvas id="trendChart"></canvas></div>
+  </div>
+  <div class="panel reveal">
+    <div class="phead"><div><h2>Monthly climatology</h2><p class="sub">Pakistan's normal month (1951&ndash;1980) and the hottest observed value of each month, 2001&ndash;2013.</p></div></div>
+    <div class="chartbox"><canvas id="climChart"></canvas></div>
+  </div>
+</div>
+
+<div class="grid-7-5">
+  <div class="panel reveal">
+    <div class="phead"><div><h2>Heatmap &middot; month by year</h2><p class="sub">Every Pakistan month 2001&ndash;2013 compared with its own 1951&ndash;1980 normal.</p></div><span class="tag">{{ dash.heat|length }} months</span></div>
+    <div class="heatmap" id="heatmap"></div>
+    <div class="legendbar"></div><div class="legendrow"><span>&minus;4&nbsp;&deg;C</span><span>0</span><span>+4&nbsp;&deg;C</span></div>
+  </div>
+  <div class="panel reveal">
+    <div class="phead"><div><h2>Extremes</h2><p class="sub">The eight biggest monthly heat anomalies on record (2001&ndash;2013).</p></div></div>
+    <div class="chartbox"><canvas id="extChart"></canvas></div>
+  </div>
 </div>
 
 <div class="grid2">
-  <div class="panel">
-    <h2 class="panelhead"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/></svg> Pakistan temperature: past years and future guess</h2>
-    <canvas id="trendChart"></canvas>
+  <div class="panel reveal">
+    <div class="phead"><div><h2>Very hot months per year</h2><p class="sub">Count of alert months (&ge; 1.5&nbsp;&deg;C above normal).</p></div></div>
+    <div class="chartbox"><canvas id="anomChart"></canvas></div>
   </div>
-  <div class="panel">
-    <h2 class="panelhead"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M6 21v-7"/><path d="M11 21V5"/><path d="M16 21v-10"/><path d="M21 21v-4"/></svg> Very hot months in each year</h2>
-    <canvas id="anomChart"></canvas>
+  <div class="panel reveal">
+    <div class="phead"><div><h2>Forecast vs actual &middot; error</h2><p class="sub">Model 2 tested on 2001&ndash;2013, years it never saw. Bars are the error (predicted &minus; actual).</p></div></div>
+    <div class="chartbox"><canvas id="errChart"></canvas></div>
   </div>
 </div>
-<div class="panel">
-  <h2 class="panelhead"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg> Latest years: Pakistan (new data)</h2>
-  <p>Our old data ends in 2013. This chart uses new data (ERA5) for the latest years.
-  In <b>2025</b>, Pakistan's average temperature was <b>21.46 C</b>, one of the hottest years.
-  Heat is still going up.</p>
-  <canvas id="recentChart"></canvas>
+
+<div class="grid2">
+  <div class="panel reveal">
+    <div class="phead"><div><h2>City &amp; country comparison</h2><p class="sub">Warming rate since 1950, &deg;C per decade (linear trend, Berkeley Earth).</p></div></div>
+    <div class="chartbox lg"><canvas id="rateChart"></canvas></div>
+  </div>
+  <div class="panel reveal">
+    <div class="phead"><div><h2>Fastest-warming countries</h2><p class="sub">2004&ndash;2013 average minus 1951&ndash;1980 average, all {{ dash.warming_total }} countries with enough data.</p></div></div>
+    <div class="chartbox lg"><canvas id="topChart"></canvas></div>
+  </div>
 </div>
+
+<div class="grid2">
+  <div class="panel reveal">
+    <div class="phead"><div><h2>Year-over-year change</h2><p class="sub">Pakistan, change in yearly mean versus the year before (ERA5).</p></div></div>
+    <div class="chartbox"><canvas id="yoyChart"></canvas></div>
+  </div>
+  <div class="panel reveal">
+    <div class="phead"><div><h2>Latest years &middot; Pakistan (ERA5)</h2><p class="sub">Our Berkeley Earth file ends in 2013; ERA5 fills 2000&ndash;2025.</p></div><span class="tag">2025: {{ recent.pakistan_yearly['2025'] }}&nbsp;&deg;C</span></div>
+    <div class="chartbox"><canvas id="recentChart"></canvas></div>
+  </div>
+</div>
+
+<div class="panel reveal">
+  <h2>Key findings</h2>
+  <div class="insights-row" style="margin-top:10px">
+    <div class="insight"><span class="ico">1</span><div><b>Hotter every decade</b><span>Pakistan's trend line rises steadily; the 2010s sit well above the 1951&ndash;1980 normal.</span></div></div>
+    <div class="insight"><span class="ico" style="color:var(--violet);background:rgba(139,124,255,.14)">2</span><div><b>{{ stats.forecast_2050 }}&nbsp;&deg;C by 2050</b><span>Model 2 estimate. Open Projections for 2&ndash;10 year outlooks with ranges.</span></div></div>
+    <div class="insight"><span class="ico" style="color:var(--red);background:rgba(255,82,102,.14)">3</span><div><b>{{ stats.anomalies }} alert months</b><span>2001&ndash;2013; the record was March 2010 at +4.31&nbsp;&deg;C.</span></div></div>
+    <div class="insight"><span class="ico" style="color:var(--amber);background:rgba(255,181,71,.14)">4</span><div><b>r = {{ stats.correlation }}</b><span>More CO&#8322; in the air, more heat: a very strong link.</span></div></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
 <script>
-const pak = {{ pakistan|tojson }};
-const fc = {{ model.forecasts|tojson }};
-const hist = pak.filter(p => p[0] >= 1900);
-const labels = hist.map(p => p[0]).concat(Object.keys(fc).map(Number));
-const histData = hist.map(p => p[1]).concat(Object.keys(fc).map(() => null));
-const fcData = hist.map(() => null).concat(Object.values(fc));
-fcData[hist.length - 1] = hist[hist.length - 1][1];
-new Chart(document.getElementById('trendChart'), {type: 'line',
-  data: {labels: labels, datasets: [
-    {label: 'Temperature of past years', data: histData, borderColor: '#4DABFF', pointRadius: 0, borderWidth: 1.5},
-    {label: 'Future guess', data: fcData, borderColor: '#FF6B74', pointRadius: 2, borderWidth: 2, borderDash: [5, 4]}
-  ]}, options: {scales: {x: {ticks: {maxTicksLimit: 12}}}}});
-const apy = {{ anom_per_year|tojson }};
-new Chart(document.getElementById('anomChart'), {type: 'bar',
-  data: {labels: Object.keys(apy), datasets: [{label: 'Very hot months', data: Object.values(apy), backgroundColor: '#FF9F45'}]},
-  options: {plugins: {legend: {display: false}}}});
-const recent = {{ recent.pakistan_yearly|tojson }};
-new Chart(document.getElementById('recentChart'), {type: 'bar',
-  data: {labels: Object.keys(recent), datasets: [{label: 'Pakistan yearly average temperature (C)', data: Object.values(recent), backgroundColor: '#2E9BFF'}]},
-  options: {plugins: {legend: {display: false}}, scales: {y: {min: 19}}}});
+(function () {
+  var C = ES.C;
+  var pak = {{ pakistan|tojson }}, fc = {{ model.forecasts|tojson }}, D = {{ dash|tojson }};
+  var apy = {{ anom_per_year|tojson }}, recent = {{ recent.pakistan_yearly|tojson }};
+  var M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+  /* sparklines */
+  ES.spark('spRecords', [2.1, 3.4, 4.8, 6.2, 7.9, 9.1, 10.06], C.sky);
+  ES.spark('spCountries', D.rates.map(function (r) { return r.mean; }), C.green, 'bar');
+  ES.spark('spAlerts', Object.values(apy), C.red, 'bar');
+  ES.spark('spCo2', [316, 326, 339, 354, 369, 389, 412, 426], C.amber);
+  ES.spark('spTrend', Object.values(fc), C.violet);
+  ES.spark('spRecent', Object.values(recent), C.cyan);
+
+  /* stripes */
+  ES.stripes('stripes', D.stripes.map(function (r) { return r[0]; }), D.stripes.map(function (r) { return r[1]; }), { lim: 1.5, base: '1951-1980' });
+
+  /* trend + forecast */
+  var hist = pak.filter(function (p) { return p[0] >= 1900; });
+  var fy = Object.keys(fc).map(Number), labels = hist.map(function (p) { return p[0]; }).concat(fy);
+  var fcData = hist.map(function () { return null; }).concat(Object.values(fc)); fcData[hist.length - 1] = hist[hist.length - 1][1];
+  ES.chart('trendChart', { type: 'line', data: { labels: labels, datasets: [
+    { label: 'Observed yearly mean', data: hist.map(function (p) { return p[1]; }).concat(fy.map(function () { return null; })), borderColor: C.sky, backgroundColor: ES.grad(C.sky, .28, 0), fill: true, borderWidth: 1.6 },
+    { label: 'Model 2 forecast', data: fcData, borderColor: C.red, borderDash: [6, 4], pointRadius: 3, pointBackgroundColor: C.red, tension: 0 }] },
+    options: { scales: { x: { ticks: { maxTicksLimit: 10, maxRotation: 0 } }, y: { title: { display: true, text: '\u00b0C' } } }, plugins: { tooltip: { callbacks: { label: function (i) { return i.parsed.y == null ? null : ' ' + i.dataset.label + ': ' + i.parsed.y.toFixed(2) + ' \u00b0C'; } } } } } });
+
+  /* climatology: normal vs max observed */
+  ES.chart('climChart', { type: 'bar', data: { labels: M, datasets: [
+    { type: 'line', label: 'Hottest anomaly that month', data: M.map(function (_, m) { var v = D.heat.filter(function (h) { return h[1] === m + 1; }).map(function (h) { return h[2]; }); return +(D.climatology[m] + Math.max.apply(null, v)).toFixed(2); }), borderColor: C.red, pointRadius: 3, pointBackgroundColor: C.red, yAxisID: 'y' },
+    { label: 'Normal 1951-1980', data: D.climatology, backgroundColor: function (c) { return ES.alpha(ES.tempColor(c.raw) === '#556' ? C.sky : ES.tempColor(c.raw), .8); } }] },
+    options: { scales: { y: { title: { display: true, text: '\u00b0C' } } }, plugins: { tooltip: { callbacks: { label: function (i) { return ' ' + i.dataset.label + ': ' + i.parsed.y.toFixed(1) + ' \u00b0C'; } } } } } });
+
+  /* heatmap */
+  ES.heatmap('heatmap', D.heat.map(function (h) { return [h[0], h[1], h[2]]; }), { lim: 4, height: 250 });
+
+  /* extremes */
+  ES.chart('extChart', { type: 'bar', data: { labels: D.extremes.map(function (r) { var d = new Date(r[0]); return M[d.getUTCMonth()] + ' ' + d.getUTCFullYear(); }),
+    datasets: [{ label: 'Above normal', data: D.extremes.map(function (r) { return r[3]; }), backgroundColor: D.extremes.map(function (r) { return r[3] >= 3 ? C.red : C.amber; }), barThickness: 16 }] },
+    options: { indexAxis: 'y', plugins: { legend: { display: false }, tooltip: { callbacks: { label: function (i) { var r = D.extremes[i.dataIndex]; return [' +' + r[3] + ' \u00b0C above normal', ' actual ' + r[1] + ' \u00b0C, normal ' + r[2] + ' \u00b0C']; } } } }, scales: { x: { title: { display: true, text: '\u00b0C above the month\'s normal' } } } } });
+
+  /* very hot months per year */
+  ES.chart('anomChart', { type: 'bar', data: { labels: Object.keys(apy), datasets: [{ label: 'Very hot months', data: Object.values(apy), backgroundColor: ES.grad(C.amber, .95, .35) }] }, options: { plugins: { legend: { display: false } } } });
+
+  /* forecast vs actual */
+  var ty = {{ model.test_years|tojson }};
+  ES.chart('errChart', { type: 'bar', data: { labels: ty.map(function (r) { return r[0]; }), datasets: [
+    { type: 'line', label: 'Actual', data: ty.map(function (r) { return r[1]; }), borderColor: C.sky, pointRadius: 3, yAxisID: 'y1' },
+    { type: 'line', label: 'Predicted', data: ty.map(function (r) { return r[2]; }), borderColor: C.violet, borderDash: [5, 4], pointRadius: 3, yAxisID: 'y1' },
+    { label: 'Error', data: D.errors.map(function (e) { return e[1]; }), backgroundColor: D.errors.map(function (e) { return e[1] < 0 ? ES.alpha(C.red, .7) : ES.alpha(C.green, .7); }), yAxisID: 'y' }] },
+    options: { scales: { y: { position: 'right', title: { display: true, text: 'error \u00b0C' }, grid: { display: false }, suggestedMin: -1.5, suggestedMax: 1.5 }, y1: { position: 'left', beginAtZero: false, suggestedMin: 20.5, suggestedMax: 22.6, title: { display: true, text: '\u00b0C' } } } } });
+
+  /* comparisons */
+  ES.chart('rateChart', { type: 'bar', data: { labels: D.rates.map(function (r) { return r.country; }), datasets: [{ label: '\u00b0C per decade', data: D.rates.map(function (r) { return r.per_decade; }), backgroundColor: D.rates.map(function (r) { return r.country === 'Pakistan' ? C.cyan : ES.alpha(C.sky, .65); }), barThickness: 14 }] },
+    options: { indexAxis: 'y', plugins: { legend: { display: false }, tooltip: { callbacks: { label: function (i) { var r = D.rates[i.dataIndex]; return [' ' + ES.sign(r.per_decade, 3) + ' \u00b0C per decade', ' 2004-13 vs 1951-80: ' + ES.sign(r.warming) + ' \u00b0C']; } } } } } });
+  ES.chart('topChart', { type: 'bar', data: { labels: D.top_warming.map(function (r) { return r[0]; }), datasets: [{ label: 'Warming \u00b0C', data: D.top_warming.map(function (r) { return r[1]; }), backgroundColor: D.top_warming.map(function (r, i) { return ES.divColor(r[1], 2.2); }), barThickness: 14 }] },
+    options: { indexAxis: 'y', plugins: { legend: { display: false }, tooltip: { callbacks: { label: function (i) { return ' +' + i.parsed.x.toFixed(2) + ' \u00b0C warmer than 1951-1980'; } } } } } });
+
+  /* yoy + recent */
+  ES.chart('yoyChart', { type: 'bar', data: { labels: D.yoy.map(function (r) { return r[0]; }), datasets: [{ label: 'Change vs previous year', data: D.yoy.map(function (r) { return r[1]; }), backgroundColor: D.yoy.map(function (r) { return r[1] >= 0 ? ES.alpha(C.red, .8) : ES.alpha(C.sky, .8); }) }] },
+    options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: function (i) { return ' ' + ES.sign(i.parsed.y) + ' \u00b0C vs ' + (+i.label - 1); } } } } } });
+  ES.chart('recentChart', { type: 'line', data: { labels: Object.keys(recent), datasets: [{ label: 'Pakistan yearly mean (\u00b0C)', data: Object.values(recent), borderColor: C.cyan, backgroundColor: ES.grad(C.cyan, .35, 0), fill: true, pointRadius: 3, pointBackgroundColor: Object.values(recent).map(function (v) { return v >= 21.1 ? C.red : C.cyan; }) }] },
+    options: { plugins: { legend: { display: false } }, scales: { y: { suggestedMin: 19.5 } } } });
+
+  /* live board */
+  function chip(t) { return '<span class="tchip" style="background:' + ES.tempColor(t) + '">' + ES.fmt(t, 1, '\u00b0') + '</span>'; }
+  ES.getJSON('/api/live-cities', 10).then(function (d) {
+    document.getElementById('lbUpdated').textContent = 'updated ' + d.updated;
+    function set(id, r, f) { if (!r) return; document.getElementById(id).innerHTML = f(r); document.getElementById(id + 'C').textContent = r.city + ', ' + r.country; }
+    set('lbHot', d.hottest, function (r) { return ES.fmt(r.temp, 1) + '<small>\u00b0C</small>'; });
+    set('lbCold', d.coldest, function (r) { return ES.fmt(r.temp, 1) + '<small>\u00b0C</small>'; });
+    set('lbWind', d.windiest, function (r) { return ES.fmt(r.wind, 0) + '<small>km/h</small>'; });
+    document.getElementById('lbRep').innerHTML = d.reporting + '<small>/' + d.total + '</small>';
+    var rows = d.cities.slice().sort(function (a, b) { return (b.temp || -99) - (a.temp || -99); });
+    document.querySelector('#lbTable tbody').innerHTML = rows.map(function (r) {
+      return '<tr data-lat="' + r.lat + '" data-lon="' + r.lon + '" data-name="' + r.city + '" style="cursor:pointer"><td><b>' + r.city + '</b> <span class="note">' + r.country + '</span></td><td>' + chip(r.temp) + '</td><td class="note">' + ES.fmt(r.tmin, 0) + '\u2013' + ES.fmt(r.tmax, 0) + '\u00b0</td><td>' + ES.fmt(r.rain, 1) + ' mm</td><td>' + ES.fmt(r.wind, 0) + ' km/h</td><td class="note">' + r.sky + '</td></tr>';
+    }).join('');
+    document.querySelectorAll('#lbTable tbody tr').forEach(function (tr) { tr.addEventListener('click', function () { location.href = '/globe?lat=' + tr.dataset.lat + '&lon=' + tr.dataset.lon + '&name=' + encodeURIComponent(tr.dataset.name); }); });
+    var top = rows.filter(function (r) { return r.temp != null; });
+    ES.chart('lbChart', { type: 'bar', data: { labels: top.map(function (r) { return r.city; }), datasets: [
+      { label: 'Now \u00b0C', data: top.map(function (r) { return r.temp; }), backgroundColor: top.map(function (r) { return ES.tempColor(r.temp); }) },
+      { type: 'line', label: 'Today max', data: top.map(function (r) { return r.tmax; }), borderColor: 'rgba(255,255,255,.55)', borderWidth: 1, pointRadius: 2, pointBackgroundColor: '#fff', showLine: false },
+      { type: 'line', label: 'Today min', data: top.map(function (r) { return r.tmin; }), borderColor: 'rgba(62,224,255,.8)', borderWidth: 1, pointRadius: 2, pointBackgroundColor: C.cyan, showLine: false }] },
+      options: { scales: { x: { ticks: { maxRotation: 60, minRotation: 60, autoSkip: false, font: { size: 9.5 } } } } } });
+  }).catch(function (e) {
+    document.querySelector('#lbTable tbody').innerHTML = '<tr><td colspan="6"><div class="errbox">' + e.message + '</div></td></tr>';
+    document.getElementById('lbUpdated').textContent = 'offline';
+  });
+})();
 </script>
 {% endblock %}

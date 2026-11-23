@@ -3,10 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#04070F">
 <title>{% block title %}EarthScape Climate Agency{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='es/theme.css') }}">
+{% block head %}{% endblock %}
 <script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
-<script>if (window.Chart) { Chart.defaults.color = '#A9C3E4'; Chart.defaults.borderColor = 'rgba(140,170,220,0.16)'; Chart.defaults.font.family = 'Arial, Helvetica, sans-serif'; }</script>
+<script src="{{ url_for('static', filename='es/space.js') }}"></script>
+<script src="{{ url_for('static', filename='es/charts.js') }}"></script>
 </head>
 <body>
 {% macro ic(name) %}
@@ -21,61 +27,70 @@
 {% elif name == 'chat' %}<path d="M21 11.5a8.5 8.5 0 01-8.5 8.5c-1.5 0-3-.4-4.2-1.1L3 20l1.1-5.3A8.5 8.5 0 1121 11.5z"/>
 {% elif name == 'help' %}<circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 015.8 1c0 2-3 2.6-3 4"/><line x1="12" y1="17" x2="12.01" y2="17"/>
 {% elif name == 'gear' %}<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33 1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82 1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+{% elif name == 'globe' %}<circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+{% elif name == 'orbit' %}<circle cx="12" cy="12" r="3"/><ellipse cx="12" cy="12" rx="10" ry="4.5" transform="rotate(-25 12 12)"/><circle cx="20" cy="8" r="1.2" fill="currentColor"/>
+{% elif name == 'logout' %}<path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/>
 {% elif name == 'person' %}<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/>
 {% endif %}
 </svg>
 {% endmacro %}
+<canvas id="es-stars" aria-hidden="true"></canvas><div class="es-nebula" aria-hidden="true"></div>
 {% if session.get('user') %}
 <div class="layout">
   <aside class="sidebar">
     <div class="sidebrand">
-      <img class="logoimg" src="{{ url_for('static', filename='earth-logo.jpg') }}" alt="EarthScape logo">
+      <span class="es-logo" aria-hidden="true"></span>
       <div>
         <div class="brandname">EarthScape</div>
         <div class="brandsub">Climate Agency</div>
       </div>
       <button type="button" class="menubtn" id="menuBtn" aria-label="Open menu"><span class="burger"><span></span><span></span><span></span></span></button>
     </div>
+    {% macro nav(endpoint, icon, label, extra='') %}<a href="{{ url_for(endpoint) }}"{% if request.endpoint == endpoint %} class="active" aria-current="page"{% endif %}>{{ ic(icon) }} {{ label }}{{ extra|safe }}</a>{% endmacro %}
     <nav class="sidenav">
-      <a href="{{ url_for('dashboard') }}"{% if request.path == url_for('dashboard') %} class="active"{% endif %}>{{ ic('home') }} Dashboard</a>
-      <a href="{{ url_for('explorer') }}"{% if request.path == url_for('explorer') %} class="active"{% endif %}>{{ ic('bars') }} Data Explorer</a>
-      <a href="{{ url_for('predictions') }}"{% if request.path == url_for('predictions') %} class="active"{% endif %}>{{ ic('trend') }} Predictions</a>
-      <a href="{{ url_for('alerts') }}"{% if request.path == url_for('alerts') %} class="active"{% endif %}>{{ ic('bell') }} Alerts <span class="navbadge">{{ alert_count }}</span></a>
-      <a href="{{ url_for('correlation') }}"{% if request.path == url_for('correlation') %} class="active"{% endif %}>{{ ic('link') }} Correlation</a>
-      <a href="{{ url_for('weather_page') }}"{% if request.path == url_for('weather_page') %} class="active"{% endif %}>{{ ic('cloud') }} Live Weather</a>
-      <a href="{{ url_for('upload') }}"{% if request.path == url_for('upload') %} class="active"{% endif %}>{{ ic('upload') }} Upload Data</a>
-      <a href="{{ url_for('feedback') }}"{% if request.path == url_for('feedback') %} class="active"{% endif %}>{{ ic('chat') }} Feedback</a>
-      <a href="{{ url_for('help_page') }}"{% if request.path == url_for('help_page') %} class="active"{% endif %}>{{ ic('help') }} Help</a>
-      {% if session.get('role') == 'Administrator' %}
-      <a href="{{ url_for('admin') }}"{% if request.path == url_for('admin') %} class="active"{% endif %}>{{ ic('gear') }} Admin</a>
-      {% endif %}
+      <div class="navsec">Overview</div>
+      {{ nav('dashboard', 'home', 'Dashboard') }}
+      {{ nav('globe_page', 'globe', 'Live Globe', '<span class="new">NEW</span>') }}
+      {{ nav('projections_page', 'orbit', 'Projections', '<span class="new">10Y</span>') }}
+      <div class="navsec">Analysis</div>
+      {{ nav('explorer', 'bars', 'Data Explorer') }}
+      {{ nav('predictions', 'trend', 'Predictions') }}
+      {{ nav('alerts', 'bell', 'Alerts', '<span class="navbadge">' ~ alert_count ~ '</span>') }}
+      {{ nav('correlation', 'link', 'Correlation') }}
+      {{ nav('weather_page', 'cloud', 'Live Weather') }}
+      {{ nav('upload', 'upload', 'Upload Data') }}
+      <div class="navsec">Support</div>
+      {{ nav('feedback', 'chat', 'Feedback') }}
+      {{ nav('help_page', 'help', 'Help') }}
+      {% if session.get('role') == 'Administrator' %}{{ nav('admin', 'gear', 'Admin') }}{% endif %}
     </nav>
     <div class="sidecard">
-      <img src="{{ url_for('static', filename='greener-planet.jpg') }}" alt="A greener planet">
-      <div class="sc-text"><span class="leaf">&#127793;</span> <strong>A Greener Planet</strong><br>A Safer Tomorrow</div>
+      <div style="display:flex;align-items:center;gap:8px"><span class="livedot"></span><b>Data coverage</b></div>
+      <div class="scrow"><span>Countries</span><b>{{ site_stats.countries }}</b></div>
+      <div class="scrow"><span>On the globe</span><b>{{ site_stats.globe_countries }}</b></div>
+      <div class="scrow"><span>Years</span><b>{{ site_stats.first_year }}&ndash;2026</b></div>
     </div>
     <div class="sidefoot">&copy; 2025 EarthScape Climate Agency</div>
   </aside>
   <div class="content">
-    <div class="hero">
-      <div>
-        <div class="pagetitle">EarthScape<br><span>Climate Agency</span></div>
-        <div class="pagesub">Real-Time Climate Intelligence for a Sustainable Future</div>
+    <header class="topbar2">
+      <div class="crumb"><span class="t">{% block page_title %}EarthScape Climate Agency{% endblock %}</span><span class="s">{% block page_sub %}Real-time climate intelligence for a sustainable future{% endblock %}</span></div>
+      <div class="topright">
+        <span class="livepill"><span class="livedot"></span> Live data</span>
+        <span class="userchip" title="{{ session.get('name') }} ({{ session.get('role') }})"><span class="av">{{ (session.get('name') or 'U')[:1] }}</span><span class="nm">{{ session.get('name') }}<small>{{ session.get('role') }}</small></span></span>
+        <a class="btn-ghost logoutlink" href="{{ url_for('logout') }}">{{ ic('logout') }} Logout</a>
       </div>
-      <div class="herouser">
-        <span class="livepill"><span class="livedot"></span> Live Data <span class="bolt">&#9889;</span></span>
-        <span class="avatar" title="{{ session.get('name') }} ({{ session.get('role') }})">{{ ic('person') }}</span>
-        <a class="logoutlink" href="{{ url_for('logout') }}">Logout</a>
-      </div>
-    </div>
+    </header>
     <main>
       {% with messages = get_flashed_messages(with_categories=true) %}{% if messages %}<div class="flash{% if messages[0][0] == 'error' %} err{% endif %}">{{ messages[0][1] }}</div>{% endif %}{% endwith %}
       {% block content %}{% endblock %}
-      <footer class="foot">Data sources: Berkeley Earth Surface Temperature (Kaggle), NOAA CO2 records, Copernicus ERA5 via Our World in Data.<br>
+      <footer class="foot">Data: Berkeley Earth Surface Temperature (Kaggle), NOAA CO2, Copernicus ERA5 (via Our World in Data and Open-Meteo), CMIP6 HighResMIP via Open-Meteo Climate API. Country shapes: Natural Earth.<br>
       An Aptech eProject: Big Data - EarthScape Climate Agency.</footer>
     </main>
   </div>
 </div>
+<link rel="stylesheet" href="{{ url_for('static', filename='es/chat.css') }}">
+<script src="{{ url_for('static', filename='es/chat.js') }}" defer></script>
 <script>
   (function () {
     var btn = document.getElementById('menuBtn');
@@ -86,9 +101,10 @@
   })();
 </script>
 {% else %}
-<main class="bare">
+<main class="bare auth">
   {% block content_login %}{% endblock %}
 </main>
 {% endif %}
+{% block scripts %}{% endblock %}
 </body>
 </html>

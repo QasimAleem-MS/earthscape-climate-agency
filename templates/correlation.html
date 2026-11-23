@@ -1,27 +1,40 @@
 {% extends "base.html" %}
+{% block title %}Correlation - EarthScape Climate Agency{% endblock %}
+{% block page_title %}CO&#8322; &amp; temperature correlation{% endblock %}
+{% block page_sub %}Whole world &middot; one dot per year, 1959&ndash;2025 &middot; NOAA CO&#8322; and world land temperature{% endblock %}
 {% block content %}
-<h1>Correlation Analysis: CO2 and Temperature</h1>
-<div class="panel">
-  <p><b>This graph is of the whole world, not one country.</b> Every dot is one year,
-  from <b>1959 to 2025</b>. <b>Move your mouse on a dot:</b> it tells you that year,
-  how much CO2 was in the air, and how hot the world was.</p>
-  <p>The link between CO2 and heat is <b>0.9655</b>. The highest link is 1, so 0.9655 means
-  a very strong link: <b>more CO2, more heat.</b> As CO2 went up, the world got hotter.
-  That is what this page shows.</p>
-  <canvas id="co2Chart"></canvas>
+<div class="kpis">
+  <div class="kpi reveal" style="--c:var(--amber)"><div class="k-lab"><i></i>Correlation (r)</div><div class="k-num"><span data-count="0.9655" data-dec="4">0.9655</span></div><div class="k-sub">1.0 = a perfect match</div></div>
+  <div class="kpi reveal" style="--c:var(--red)"><div class="k-lab"><i></i>CO&#8322; rise</div><div class="k-num" id="kCo2">&ndash;</div><div class="k-sub">ppm, first to last year</div></div>
+  <div class="kpi reveal" style="--c:var(--sky)"><div class="k-lab"><i></i>Temperature rise</div><div class="k-num" id="kT">&ndash;</div><div class="k-sub">world land, first to last 5 years</div></div>
+  <div class="kpi reveal" style="--c:var(--violet)"><div class="k-lab"><i></i>Sensitivity</div><div class="k-num" id="kS">&ndash;</div><div class="k-sub">&deg;C per 100 ppm (fitted line)</div></div>
 </div>
+<div class="grid-7-5">
+  <div class="panel reveal"><div class="phead"><div><h2>Every year as a dot</h2><p class="sub">Hover a dot: year, CO&#8322; and temperature. The line is the least-squares fit.</p></div></div><div class="chartbox lg"><canvas id="co2Chart"></canvas></div></div>
+  <div class="panel reveal"><div class="phead"><div><h2>Both over time</h2><p class="sub">CO&#8322; (left) and temperature difference (right)</p></div></div><div class="chartbox lg"><canvas id="tlChart"></canvas></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
 <script>
-const co2 = {{ co2|tojson }};
-new Chart(document.getElementById('co2Chart'), {type: 'scatter',
-  data: {datasets: [{label: 'One dot = one year (world data)', data: co2.map(r => ({x: r[1], y: r[2], year: r[0]})),
-    backgroundColor: '#4DA3FF', hoverBackgroundColor: '#FFD34D', pointRadius: 4, pointHoverRadius: 8, pointHitRadius: 12}]},
-  options: {interaction: {mode: 'nearest', intersect: true},
-    plugins: {tooltip: {enabled: true, backgroundColor: '#0A1B33', borderColor: '#2E7CF6',
-      borderWidth: 1, titleColor: '#FFFFFF', bodyColor: '#EAF3FF', padding: 10, displayColors: false,
-      callbacks: {title: items => 'Year ' + items[0].raw.year,
-                  label: item => 'CO2 in the air: ' + item.parsed.x + ' ppm',
-                  afterLabel: item => 'World land temperature: ' + item.parsed.y.toFixed(2) + ' C (difference from the old normal)'}}},
-    scales: {x: {title: {display: true, text: 'CO2 in the air (ppm) - whole world'}},
-             y: {title: {display: true, text: 'World land temperature (C)'}}}}});
+(function () {
+  var C = ES.C, co2 = {{ co2|tojson }};
+  var xs = co2.map(function (r) { return r[1]; }), ys = co2.map(function (r) { return r[2]; }), n = xs.length;
+  var mx = xs.reduce(function (a, b) { return a + b; }) / n, my = ys.reduce(function (a, b) { return a + b; }) / n;
+  var sxy = 0, sxx = 0; xs.forEach(function (x, i) { sxy += (x - mx) * (ys[i] - my); sxx += (x - mx) * (x - mx); });
+  var b = sxy / sxx, a = my - b * mx, minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+  document.getElementById('kCo2').innerHTML = '+' + (xs[n - 1] - xs[0]).toFixed(0) + '<small>ppm</small>';
+  var f5 = ys.slice(0, 5).reduce(function (s, v) { return s + v; }) / 5, l5 = ys.slice(-5).reduce(function (s, v) { return s + v; }) / 5;
+  document.getElementById('kT').innerHTML = ES.sign(l5 - f5) + '<small>\u00b0C</small>';
+  document.getElementById('kS').innerHTML = (b * 100).toFixed(2) + '<small>\u00b0C</small>';
+  ES.chart('co2Chart', { type: 'scatter', data: { datasets: [
+    { label: 'One dot = one year', data: co2.map(function (r) { return { x: r[1], y: r[2], year: r[0] }; }), backgroundColor: co2.map(function (r) { return ES.divColor(r[2], 1.2); }), pointRadius: 5, pointHoverRadius: 9, borderColor: 'rgba(0,0,0,.3)' },
+    { type: 'line', label: 'Fitted line', data: [{ x: minX, y: a + b * minX }, { x: maxX, y: a + b * maxX }], borderColor: C.amber, borderDash: [6, 4], pointRadius: 0 }] },
+    options: { interaction: { mode: 'nearest', intersect: true }, plugins: { tooltip: { callbacks: { title: function (i) { return i[0].raw.year ? 'Year ' + i[0].raw.year : 'Fitted line'; }, label: function (i) { return i.raw.year ? ['CO\u2082: ' + i.parsed.x + ' ppm', 'World land temperature: ' + ES.sign(i.parsed.y) + ' \u00b0C vs old normal'] : null; } } } },
+      scales: { x: { type: 'linear', title: { display: true, text: 'CO\u2082 in the air (ppm)' } }, y: { title: { display: true, text: '\u00b0C difference from normal' } } } } });
+  ES.chart('tlChart', { type: 'line', data: { labels: co2.map(function (r) { return r[0]; }), datasets: [
+    { label: 'CO\u2082 ppm', data: xs, borderColor: C.amber, backgroundColor: ES.grad(C.amber, .2, 0), fill: true, yAxisID: 'y' },
+    { label: 'Temperature \u00b0C', data: ys, borderColor: C.red, yAxisID: 'y1', borderWidth: 1.6 }] },
+    options: { scales: { x: { ticks: { maxTicksLimit: 8, maxRotation: 0 } }, y1: { position: 'right', grid: { display: false } } } } });
+})();
 </script>
 {% endblock %}

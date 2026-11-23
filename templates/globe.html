@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Live Globe - EarthScape Climate Agency{% endblock %}
+{% block page_title %}Live Globe{% endblock %}
+{% block page_sub %}Drag to spin &middot; scroll to zoom &middot; hover a country &middot; click for its past, present and future{% endblock %}
+{% block content %}
+<div class="globe-page" id="globePage">
+  <div id="globeWrap" aria-label="Interactive 3D globe"></div>
+  <div id="flatWrap" aria-label="Flat world map"></div>
+  <div class="g-toolbar">
+    <div class="g-search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="gSearch" type="search" placeholder="Search a country or city&hellip;" autocomplete="off" aria-label="Search a country or city">
+      <div class="g-sugg" id="gSugg" role="listbox"></div>
+    </div>
+    <div class="seg" id="segView"><button data-v="globe" class="on">Globe</button><button data-v="flat">Flat map</button></div>
+    <div class="seg" id="segMode"><button data-v="warming" class="on">Warming</button><button data-v="plain">Satellite</button></div>
+    <div class="seg" id="segLabels"><button data-v="on" class="on">Live temps</button><button data-v="off">Off</button></div>
+  </div>
+  <div class="g-legend">
+    <div id="legWarm"><b>Warming since 1951&ndash;1980</b> (2004&ndash;2013 average, Berkeley Earth)
+      <div class="legendbar"></div><div class="legendrow"><span>&minus;2.2&nbsp;&deg;C</span><span>0</span><span>+2.2&nbsp;&deg;C</span></div></div>
+    <div style="margin-top:6px">City chips: temperature right now (Open-Meteo)</div>
+  </div>
+  <div class="g-stats" id="gCount">loading countries&hellip;</div>
+  <div class="g-hover" id="gHover"></div>
+
+  <aside class="drawer" id="drawer" aria-label="Country climate panel">
+    <div class="dr-head">
+      <span class="flag" id="drFlag"></span>
+      <div><h2 id="drName">&nbsp;</h2><p id="drSub"></p></div>
+      <button type="button" class="dr-close" id="drClose" aria-label="Close panel">&times;</button>
+    </div>
+    <div class="dr-body" id="drBodyWrap">
+      <div class="tabs2" id="drTabs" role="tablist">
+        <button data-t="past" role="tab">Past<small>1970 &rarr; last month</small></button>
+        <button data-t="present" class="on" role="tab">Present<small>now + 16 days</small></button>
+        <button data-t="future" role="tab">Future<small>2&ndash;10 year outlook</small></button>
+      </div>
+      <div class="dr-actions"><a class="chip" id="drProj" href="/projections">Open full projection &rarr;</a><a class="chip" id="drExplore" href="/explorer">Berkeley Earth series &rarr;</a></div>
+      <div id="drBody"></div>
+    </div>
+  </aside>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='es/place.js') }}"></script>
+<script src="{{ url_for('static', filename='es/globe.js') }}"></script>
+{% endblock %}

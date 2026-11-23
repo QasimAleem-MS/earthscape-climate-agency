@@ -1,6 +1,8 @@
 {% extends "base.html" %}
+{% block title %}Live Weather - EarthScape Climate Agency{% endblock %}
+{% block page_title %}Live weather{% endblock %}
+{% block page_sub %}Weather of any city in the world, now and on any date{% endblock %}
 {% block content %}
-<h1>Weather of Any City in the World</h1>
 <p>Write your city name. Then pick any box below and press its button.
 <b>The answer opens right under that same button.</b> No need to scroll down.
 Every box already has dates filled in, so you can just press a button and see.</p>
@@ -172,7 +174,7 @@ document.getElementById('wxHourBtn').addEventListener('click', async (ev) => {
   });
   tb.innerHTML = h + '</table>';
   drawChart(d.hours.map(x => x.hour), [
-    {label: 'Temperature (C)', data: d.hours.map(x => x.temperature), borderColor: '#C00000', pointRadius: 2}
+    {label: 'Temperature (C)', data: d.hours.map(x => x.temperature), borderColor: '#FF5266', pointRadius: 2}
   ]);
   csvButton('weather_hours.csv', ['Hour', 'Temperature C', 'Humidity %'],
     d.hours.map(x => [x.hour, x.temperature, x.humidity]));
@@ -221,9 +223,9 @@ document.getElementById('wxRangeBtn').addEventListener('click', async (ev) => {
   });
   tb.innerHTML = h + '</table>';
   drawChart(d.daily.map(x => x.date), [
-    {label: 'Average temperature (C)', data: d.daily.map(x => x.tmean), borderColor: '#1F3864', pointRadius: 2},
-    {label: 'Hottest (C)', data: d.daily.map(x => x.tmax), borderColor: '#C00000', pointRadius: 0},
-    {label: 'Coldest (C)', data: d.daily.map(x => x.tmin), borderColor: '#2E7D32', pointRadius: 0}
+    {label: 'Average temperature (C)', data: d.daily.map(x => x.tmean), borderColor: '#2E9BFF', pointRadius: 2},
+    {label: 'Hottest (C)', data: d.daily.map(x => x.tmax), borderColor: '#FF5266', pointRadius: 0},
+    {label: 'Coldest (C)', data: d.daily.map(x => x.tmin), borderColor: '#2BD96B', pointRadius: 0}
   ]);
   csvButton('weather_days.csv', ['Date', 'Average C', 'Hottest C', 'Coldest C', 'Rain mm'],
     d.daily.map(x => [x.date, x.tmean, x.tmax, x.tmin, x.rain]));
@@ -249,8 +251,8 @@ document.getElementById('wxCompareBtn').addEventListener('click', async (ev) => 
   const bmap = {};
   b.daily.forEach(x => { bmap[x.date] = x; });
   drawChart(a.daily.map(x => x.date), [
-    {label: a.city + ' average (C)', data: a.daily.map(x => x.tmean), borderColor: '#C00000', pointRadius: 2},
-    {label: b.city + ' average (C)', data: a.daily.map(x => (bmap[x.date] ? bmap[x.date].tmean : null)), borderColor: '#1F3864', pointRadius: 2}
+    {label: a.city + ' average (C)', data: a.daily.map(x => x.tmean), borderColor: '#FF5266', pointRadius: 2},
+    {label: b.city + ' average (C)', data: a.daily.map(x => (bmap[x.date] ? bmap[x.date].tmean : null)), borderColor: '#2E9BFF', pointRadius: 2}
   ]);
   csvButton('weather_compare.csv', ['Date', a.city + ' Average C', b.city + ' Average C', a.city + ' Rain mm', b.city + ' Rain mm'],
     a.daily.map(x => [x.date, x.tmean, bmap[x.date] ? bmap[x.date].tmean : '', x.rain, bmap[x.date] ? bmap[x.date].rain : '']));
@@ -274,7 +276,7 @@ document.getElementById('wxMonthsBtn').addEventListener('click', async (ev) => {
   });
   tb.innerHTML = h + '</table>';
   drawChart(d.months.map(m => m.month), [
-    {label: 'Average temperature (C)', data: d.months.map(m => m.average_temperature), borderColor: '#1F3864', pointRadius: 3}
+    {label: 'Average temperature (C)', data: d.months.map(m => m.average_temperature), borderColor: '#2E9BFF', pointRadius: 3}
   ]);
   csvButton('weather_months.csv', ['Month', 'Days', 'Average Temperature C', 'Total Rain mm'],
     d.months.map(m => [m.month, m.days, m.average_temperature, m.total_rainfall_mm]));
