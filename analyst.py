@@ -215,11 +215,11 @@ class Analyst:
         fit = cl.ols([p[0] for p in pts if p[0] >= 1950], [p[1] for p in pts if p[0] >= 1950])
         hot = max(pts, key=lambda p: p[1])
         dec = [t for y, t in pts if y > last - 10]
-        out = {"records": "%d to %d (Berkeley Earth to 2012, ERA5 matched to Berkeley from 2013)" % (pts[0][0], last),
+        out = {"records": "%d to %d, Berkeley Earth + ERA5" % (pts[0][0], last),
                "normal_1951_1980": cl.rnd(b),
-               "last_decade_mean_%d_%d" % (last - 9, last): cl.rnd(sum(dec) / len(dec)),
+               "last_decade": "%d-%d" % (last - 9, last), "last_decade_mean": cl.rnd(sum(dec) / len(dec)),
                "warming_last_decade_vs_1951_1980_C": cl.rnd(sum(dec) / len(dec) - b) if b is not None else None,
-               "trend_C_per_decade_1950_%d" % last: cl.rnd(fit["b"] * 10, 3) if fit else None,
+               "trend_C_per_decade_from_1950": cl.rnd(fit["b"] * 10, 3) if fit else None,
                "warmest_year": hot, "latest_year": pts[-1]}
         ytd = getattr(self, "ytd_fn", None)
         try:
@@ -349,7 +349,7 @@ class Analyst:
                 if ry:
                     lines.append("Yearly means you asked about: %s." % ry)
         if be:
-            lines.append("In our Berkeley Earth project data (%s) its trend from 1950 was %+.3f C per decade." % (be["records"], be["trend_C_per_decade_1950_2013"] or 0))
+            lines.append("In our project data (%s) its trend from 1950 is %+.3f C per decade, and %s averaged %+.2f C against its 1951-1980 normal." % (be["records"], be["trend_C_per_decade_from_1950"] or 0, be["last_decade"], be["warming_last_decade_vs_1951_1980_C"] or 0))
         if now:
             lines.append("Right now it's %.1f C and %s." % (now["temp_C"], now["sky"].lower()))
         return " ".join(lines) or ("I found %s but the data services are busy right now. Try again in a moment, or open it on the Globe." % name)
