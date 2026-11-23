@@ -5,7 +5,7 @@
 {% block content %}
 <div class="panel">
   <h2>User Guide</h2>
-  <p><b>Live Globe:</b> A 3D satellite globe with 177 countries. Drag to spin, scroll to zoom, hover a country to see how much it has warmed, or search for any country or city. Click a country to open its panel with three tabs: <b>Past</b> (monthly temperature and rain since 1970), <b>Present</b> (weather now and a 16-day forecast) and <b>Future</b> (a 2 to 10 year climate projection). Switch to the Flat map if your device has no 3D graphics.</p>
+  <p><b>Live Globe:</b> A 3D satellite globe with 177 countries. Drag to spin, scroll to zoom, hover a country to see how much it has warmed, or search for any country or city. Click a country to open its panel with three tabs: <b>Past</b> (monthly temperature and rain since 1970), <b>Present</b> (weather now and a 16-day forecast) and <b>Future</b> (a 2 to 10 year climate projection). Switch to the Flat map if your device has no 3D graphics. The weather layer buttons add NASA rain (light, moderate, heavy, snow), a satellite cloud photo, active fires, tropical storms and volcanoes, and animated wind flow; turn on several at once.</p>
   <p><b>Projections:</b> Choose any place and a horizon of 2 to 10 years. The model projects monthly and yearly mean temperature and rainfall with 80% and 95% ranges, compares itself with CMIP6 climate models, and shows a backtest (trained to 2015, tested on 2016 onwards). You can download the numbers as CSV.</p>
   <p><b>Aria, the AI analyst:</b> Press the round chat button at the bottom right on any page. Ask about a country, city or year, for example "How has Karachi warmed since 1980?". Aria answers from the app's data and can draw a small chart.</p>
   <p><b>Dashboard:</b> The home page. It shows the key figures of the project, the interpretation of the
@@ -40,8 +40,8 @@
   trend model: it shows the long term direction, not exact yearly values.</p>
   <p><b>Can the app predict the weather 10 years from now?</b><br>
   No model can predict day-to-day weather years ahead. The Present tab forecasts daily weather up to 16 days. The Projections page forecasts the <b>climate</b>: monthly and yearly averages with a range, which is what is predictable years ahead.</p>
-  <p><b>Why does the country data end in 2013?</b><br>
-  The Berkeley Earth country dataset's records end in 2013. The CO2 companion data runs to 2025.</p>
+  <p><b>How do you show years after 2013?</b><br>
+  The Berkeley Earth country file stops in September 2013, so 2013 is only part of a year. From 2013 on, the app uses Copernicus ERA5 country averages (published by Our World in Data, to the latest month), shifted onto Berkeley's level by the average gap between the two over 1951 to 2012. The current year is shown as "so far" against its 1991 to 2020 normal, because a part-year cannot be compared with a full one.</p>
   <p><b>Who can see the Admin page?</b><br>
   Only users with the Administrator role. Analysts are denied access, as defined in the access control
   design of the project.</p>
