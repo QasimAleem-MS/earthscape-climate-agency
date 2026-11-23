@@ -5,9 +5,9 @@
 {% block content %}
 <div class="panel">
   <h2>User Guide</h2>
-  <p><b>Live Globe (new):</b> A 3D satellite globe with 177 countries. Drag to spin, scroll to zoom, hover a country to see how much it has warmed, or search for any country or city. Click a country to open its panel with three tabs: <b>Past</b> (monthly temperature and rain since 1970), <b>Present</b> (weather now and a 16-day forecast) and <b>Future</b> (a 2 to 10 year climate projection). Switch to the Flat map if your device has no 3D graphics.</p>
-  <p><b>Projections (new):</b> Choose any place and a horizon of 2 to 10 years. The model projects monthly and yearly mean temperature and rainfall with 80% and 95% ranges, compares itself with CMIP6 climate models, and shows a backtest (trained to 2015, tested on 2016 onwards). You can download the numbers as CSV.</p>
-  <p><b>Aria, the AI analyst (new):</b> Press the round chat button at the bottom right on any page. Ask about a country, city or year, for example "How has Karachi warmed since 1980?". Aria answers from the app's data and can draw a small chart.</p>
+  <p><b>Live Globe:</b> A 3D satellite globe with 177 countries. Drag to spin, scroll to zoom, hover a country to see how much it has warmed, or search for any country or city. Click a country to open its panel with three tabs: <b>Past</b> (monthly temperature and rain since 1970), <b>Present</b> (weather now and a 16-day forecast) and <b>Future</b> (a 2 to 10 year climate projection). Switch to the Flat map if your device has no 3D graphics.</p>
+  <p><b>Projections:</b> Choose any place and a horizon of 2 to 10 years. The model projects monthly and yearly mean temperature and rainfall with 80% and 95% ranges, compares itself with CMIP6 climate models, and shows a backtest (trained to 2015, tested on 2016 onwards). You can download the numbers as CSV.</p>
+  <p><b>Aria, the AI analyst:</b> Press the round chat button at the bottom right on any page. Ask about a country, city or year, for example "How has Karachi warmed since 1980?". Aria answers from the app's data and can draw a small chart.</p>
   <p><b>Dashboard:</b> The home page. It shows the key figures of the project, the interpretation of the
   results, the Pakistan temperature trend with the model forecast, and the anomaly alerts per year.</p>
   <p><b>Data Explorer:</b> Select any of the 242 countries to see its yearly average temperature chart
@@ -30,8 +30,11 @@
   The Berkeley Earth "Climate Change: Earth Surface Temperature Data" dataset (Kaggle), which contains
   measured land temperature records from weather stations worldwide, plus NOAA CO2 data for 1959 to 2025.</p>
   <p><b>What is an anomaly alert?</b><br>
-  A month is flagged when its average temperature is 1.5 C or more above its baseline, where the
-  baseline is the 1951 to 1980 average of the same month. Alerts are graded Moderate, High and Severe.</p>
+  A month (or a forecast day) is flagged when it is at least <b>{{ threshold }} C</b> (the current threshold, set by the
+  administrator) hotter than normal for that time of year. <b>Live alerts</b> compare recent months and the next 16 forecast
+  days for six major Pakistani cities with their 1991 to 2020 normal; the <b>historical</b> list compares Pakistan's months
+  from 2001 to 2013 with their 1951 to 1980 normal. Alerts are graded Moderate (below +2 C), High (+2 to +3 C) and
+  Severe (+3 C or more). The red number on the Alerts menu item counts the live alerts; hover it for the breakdown.</p>
   <p><b>How accurate is the prediction model?</b><br>
   Model 2 (trained on 1950 to 2000 data) has a test RMSE of 0.52 C on the years 2001 to 2013. It is a
   trend model: it shows the long term direction, not exact yearly values.</p>

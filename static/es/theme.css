@@ -300,3 +300,27 @@ button:disabled { opacity: .6; cursor: progress; }
 @media (max-width: 900px) { .globe-page.panel-open #globeWrap { transform: none; } }
 .sidebar .sidecard { background: linear-gradient(160deg, rgba(14,95,227,.14), rgba(8,16,34,.7)); border: 1px solid var(--line); padding: 14px; color: var(--text); }
 .sidebar .sidecard .scrow span { color: var(--muted); }
+
+/* balanced 6-card KPI row: 6 across on wide screens, 3x2 on laptops, 2x3 on phones */
+.kpis.six { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (min-width: 1640px) { .kpis.six { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+@media (max-width: 680px) { .kpis.six { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.kpis.six .kpi .k-num { font-size: clamp(22px, 2vw, 28px); }
+.citylabel { transition: opacity .25s; }
+.citylabel.hid { opacity: 0; pointer-events: none; }
+.navbadge.zero { background: var(--green); box-shadow: 0 0 12px rgba(43,217,107,.5); color: #04121f; }
+/* alerts page */
+.al-explain { display: flex; gap: 16px; align-items: flex-start; padding: 18px 22px; margin-bottom: 16px; border-radius: var(--radius); border: 1px solid rgba(255,82,102,.35); background: linear-gradient(140deg, rgba(90, 16, 34, .45), rgba(12, 18, 40, .6)); }
+.al-explain h2 { font-size: 17px; color: #fff; margin: 0 0 6px; }
+.al-explain p { margin: 0 0 6px; color: #DCE8FB; font-size: 14px; line-height: 1.55; }
+.al-explain .thv { color: #FFB3BC; }
+.al-ico { width: 46px; height: 46px; border-radius: 14px; flex-shrink: 0; display: grid; place-items: center; background: rgba(255,82,102,.16); color: var(--red); }
+.al-ico svg { width: 26px; height: 26px; }
+.al-ok { border-color: rgba(43,217,107,.45); background: linear-gradient(140deg, rgba(20,80,45,.4), rgba(10,20,40,.6)); color: #CFF8DE; }
+.altable td { white-space: nowrap; }
+.altable tr.up td { background: rgba(255,111,181,.06); }
+.dbar { display: inline-block; width: 70px; height: 7px; border-radius: 9px; background: rgba(255,255,255,.07); vertical-align: middle; margin-left: 6px; overflow: hidden; }
+.dbar i { display: block; height: 100%; border-radius: 9px; }
+.altable td:nth-child(2), .altable td:nth-child(3) { white-space: normal; }
+.altable td:nth-child(2) { min-width: 150px; }
+.al-paused { height: 100%; display: grid; place-items: center; text-align: center; padding: 20px; color: var(--muted); font-size: 13.5px; line-height: 1.6; } .al-paused b { color: #fff; }

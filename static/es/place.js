@@ -85,12 +85,38 @@
   ES.loadFuture = function (lat, lon, years) {
     var q = '?lat=' + lat + '&lon=' + lon + '&years=' + (years || 10);
     return Promise.all([ES.getJSON('/api/place/projection' + q, 720), ES.getJSON('/api/place/cmip6' + q, 1440).catch(function (e) { return { error: e.message }; })])
-      .then(function (r) { r[0].cmip6 = r[1]; return r[0]; });
+      .then(function (r) { var d = Object.assign({}, r[0]); d.cmip6 = r[1]; d._q = [lat, lon, years || 10]; return d; });
   };
+
+  function cmipCard(cmLast, cm, last) {
+    if (cmLast) return '<div class="k-num">' + ES.fmt(cmLast.t, 2) + '<small>\u00b0C</small></div><div class="k-sub">' + ES.sign(cmLast.t - last.t) + ' \u00b0C vs our projection \u00b7 models ' + ES.fmt(cmLast.t_min, 1) + '\u2013' + ES.fmt(cmLast.t_max, 1) + '</div>';
+    return '<div class="k-num" style="font-size:16px;line-height:1.3"><span class="spinner" style="width:14px;height:14px"></span> Checking models\u2026</div><div class="k-sub">The free climate-model API is busy. Our projection is shown; the CMIP6 line appears here automatically when it answers.</div>';
+  }
+  /* retry the CMIP6 cross-check in the background (20 s, 60 s, 2 min) and patch the view in place */
+  function retryCmip(el, d, lat, lon, years) {
+    var waits = [20000, 60000, 120000], i = 0;
+    (function next() {
+      if (i >= waits.length) { var c = el.querySelector('[data-cmip-card]'); if (c) c.innerHTML = '<div class="k-lab"><i></i>CMIP6 models</div><div class="k-num" style="font-size:16px">Unavailable right now</div><div class="k-sub">Our statistical projection and backtest above are complete. Reopen later for the model cross-check.</div>'; return; }
+      setTimeout(function () {
+        if (!document.body.contains(el) || el._future !== d) return;
+        ES.getJSON('/api/place/cmip6?lat=' + lat + '&lon=' + lon + '&years=' + years, 1440).then(function (cm) { d.cmip6 = cm; applyCmip(el, d); }).catch(function () { i++; next(); });
+      }, waits[i]);
+    })();
+  }
+  function applyCmip(el, d) {
+    var A = d.annual, last = A[A.length - 1], cm = d.cmip6 || {}, ens = cm.ensemble || [];
+    var cmLast = ens.filter(function (e) { return e.year === last.year; })[0] || ens[ens.length - 1];
+    var card = el.querySelector('[data-cmip-card]'); if (card) card.innerHTML = '<div class="k-lab"><i></i>CMIP6 models ' + last.year + '</div>' + cmipCard(cmLast, cm, last);
+    var ch = el._annualChart && el._annualChart.chart; if (!ch) return;
+    var map = {}; ens.forEach(function (e) { map[e.year] = e.t; });
+    ch.data.datasets[6].data = ch.data.labels.map(function (y) { return map[y] != null ? map[y] : null; }); ch.update();
+    var li = el.querySelector('[data-cmip-note]'); if (li) li.textContent = cm.note || '';
+  }
 
   /* ---------------- FUTURE ---------------- */
   ES.renderFuture = function (el, d, name, opts) {
     opts = opts || {};
+    setTimeout(function () { if (!(d.cmip6 && d.cmip6.ensemble) && d._q) retryCmip(el, d, d._q[0], d._q[1], d._q[2]); }, 0);
     var ids = { a: id('fa'), m: id('fm'), p: id('fp'), s: id('fs'), b: id('fb'), e: id('fe') };
     var A = d.annual, last = A[A.length - 1], first = A[0], bt = d.backtest.metrics, cm = d.cmip6 || {};
     var cmLast = (cm.ensemble || []).filter(function (e) { return e.year === last.year; })[0];
@@ -99,7 +125,7 @@
       '<div class="kpis">' +
       mini('Projected ' + last.year, ES.fmt(last.t, 2) + '<small>\u00b0C</small>', '80% range ' + ES.fmt(last.lo80, 1) + '\u2013' + ES.fmt(last.hi80, 1) + ' \u00b0C', 'var(--red)') +
       mini('Change vs last year obs.', ES.sign(last.t - hist[hist.length - 1][1]) + '<small>\u00b0C</small>', hist[hist.length - 1][0] + ' observed ' + ES.fmt(hist[hist.length - 1][1], 2) + ' \u00b0C', 'var(--amber)') +
-      mini('CMIP6 models ' + last.year, cmLast ? ES.fmt(cmLast.t, 2) + '<small>\u00b0C</small>' : '\u2013', cmLast ? 'model spread ' + ES.fmt(cmLast.t_min, 1) + '\u2013' + ES.fmt(cmLast.t_max, 1) + ' \u00b0C' : (cm.error || 'not available'), 'var(--violet)') +
+      '<div class="kpi" style="--c:var(--violet)" data-cmip-card><div class="k-lab"><i></i>CMIP6 models ' + last.year + '</div>' + cmipCard(cmLast, cm, last) + '</div>' +
       mini('Backtest error', ES.fmt(bt.annual_mae, 2) + '<small>\u00b0C</small>', 'yearly MAE, 2016\u2192 (monthly ' + ES.fmt(bt.mae, 2) + ')', 'var(--green)') +
       '</div>' +
       box('Yearly mean temperature: observed, projected, CMIP6', 'Shaded: 80% and 95% prediction intervals. They widen with the horizon.', ids.a, 'lg') +
@@ -112,14 +138,15 @@
       '<li><b>Trend:</b> a straight line fitted to the monthly anomalies from ' + esc(d.model.train_years) + ': ' + ES.sign(d.model.trend_per_decade, 3) + ' \u00b1 ' + ES.fmt(d.model.trend_se_per_decade, 3) + ' \u00b0C per decade.</li>' +
       '<li><b>Uncertainty:</b> month-to-month noise (\u03c3 ' + ES.fmt(d.model.residual_sd, 2) + ' \u00b0C) + slow natural swings (\u03c3 ' + ES.fmt(d.model.decadal_sd, 2) + ' \u00b0C) + trend uncertainty (autocorrelation-corrected), so the bands widen the further ahead we look.</li>' +
       '<li><b>Backtest:</b> the same method trained only to 2015 predicted 2016\u2013' + esc(d.last_observed.slice(0, 4)) + ' with a yearly MAE of ' + ES.fmt(bt.annual_mae, 2) + ' \u00b0C (climatology alone: ' + ES.fmt(bt.annual_mae_climatology_only, 2) + ' \u00b0C).</li>' +
-      '<li><b>Cross-check:</b> ' + esc(cm.note || 'CMIP6 models unavailable right now.') + '</li></ol>' +
+      '<li><b>Cross-check:</b> <span data-cmip-note>' + esc(cm.note || 'Two CMIP6 HighResMIP climate models via the Open-Meteo Climate API (loading).') + '</span></li></ol>' +
       '<p class="note" style="margin-top:8px"><b>Honest limits:</b> this is a climate projection of monthly and yearly averages. Day-to-day weather cannot be predicted years ahead by any model. A single year can easily land outside the 80% band (El Ni\u00f1o, volcanoes, a monsoon failure).</p></div>';
 
     var hy = hist.map(function (r) { return r[0]; }), fy = A.map(function (a) { return a.year; }), labels = hy.concat(fy);
     var pad = function (arr, before) { return new Array(before).fill(null).concat(arr); };
     var cmMap = {}; (cm.ensemble || []).forEach(function (e) { cmMap[e.year] = e; });
     var lastObs = hist[hist.length - 1][1];
-    ES.chart(ids.a, { type: 'line', data: { labels: labels, datasets: [
+    el._future = d;
+    el._annualChart = ES.chart(ids.a, { type: 'line', data: { labels: labels, datasets: [
       { label: '95% band', data: pad(A.map(function (a) { return a.hi95; }), hy.length), borderWidth: 0, pointRadius: 0, backgroundColor: 'transparent', fill: false },
       { label: '95% band low', data: pad(A.map(function (a) { return a.lo95; }), hy.length), borderWidth: 0, pointRadius: 0, backgroundColor: ES.alpha(C.red, .10), fill: '-1' },
       { label: '80% band', data: pad(A.map(function (a) { return a.hi80; }), hy.length), borderWidth: 0, pointRadius: 0, fill: false },
@@ -127,7 +154,7 @@
       { label: 'Observed', data: hist.map(function (r) { return r[1]; }), borderColor: C.sky, pointRadius: 2.5, pointBackgroundColor: C.sky },
       { label: 'Our projection', data: pad([lastObs].concat(A.map(function (a) { return a.t; })), hy.length - 1), borderColor: C.red, borderDash: [6, 4], pointRadius: 2.5, pointBackgroundColor: C.red },
       { label: 'CMIP6 ensemble', data: labels.map(function (y) { return cmMap[y] ? cmMap[y].t : null; }), borderColor: C.violet, pointRadius: 0, borderWidth: 2 }] },
-      options: { plugins: { legend: { labels: { filter: function (i) { return i.text.indexOf('low') < 0 && i.text.indexOf('band') < 0; } } }, tooltip: { filter: function (i) { return i.dataset.label.indexOf('band') < 0; }, callbacks: { label: function (i) { return ' ' + i.dataset.label + ': ' + ES.fmt(i.parsed.y, 2) + ' \u00b0C'; }, afterBody: function (it) { var y = +it[0].label, a = A.filter(function (x) { return x.year === y; })[0]; return a ? ['80% range: ' + a.lo80 + ' to ' + a.hi80 + ' \u00b0C', 'Rain: ~' + a.p + ' mm/yr'] : []; } } } }, scales: { x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 12 } }, y: { title: { display: true, text: '\u00b0C' } } } } });
+      options: { elements: { line: { tension: 0.12 } }, plugins: { legend: { labels: { filter: function (i) { return i.text.indexOf('low') < 0 && i.text.indexOf('band') < 0; } } }, tooltip: { filter: function (i) { return i.dataset.label.indexOf('band') < 0; }, callbacks: { label: function (i) { return ' ' + i.dataset.label + ': ' + ES.fmt(i.parsed.y, 2) + ' \u00b0C'; }, afterBody: function (it) { var y = +it[0].label, a = A.filter(function (x) { return x.year === y; })[0]; return a ? ['80% range: ' + a.lo80 + ' to ' + a.hi80 + ' \u00b0C', 'Rain: ~' + a.p + ' mm/yr'] : []; } } } }, scales: { x: { ticks: { maxRotation: 0, autoSkip: true, maxTicksLimit: 12 } }, y: { title: { display: true, text: '\u00b0C' } } } } });
 
     var Mo = d.monthly, recent = d.history_monthly_recent.slice(-24);
     var ml = recent.map(function (r) { return r[0]; }).concat(Mo.map(function (r) { return r.ym; }));

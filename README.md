@@ -94,6 +94,7 @@ years.
 | `GEMINI_API_KEY` | Alternative LLM (used when no Groq key is set). |
 | `GEMINI_MODEL` | Defaults to `gemini-2.0-flash`. |
 | `SECRET_KEY` | Flask session secret (falls back to the built-in demo value). |
+| `ALERT_THRESHOLD` | Deployment default alert threshold in C (0.5 to 5.0, default 1.5). |
 
 With no LLM key the analyst falls back to a rule-based analyst that answers common
 questions from the same real data, so the demo never breaks. No keys are stored in
@@ -124,3 +125,23 @@ Optional: `export GROQ_API_KEY=...` before starting to enable the LLM analyst.
 Hosted on Vercel from the GitHub repository (Flask preset, app.py at root).
 Every push to the main branch redeploys automatically. No new Python packages
 are required (the projection engine is pure Python).
+
+## Alerts: how the numbers work
+- **Live alerts** (`live_alerts.py`, cached 6 hours): ERA5 daily means from the
+  Open-Meteo archive for Karachi, Lahore, Islamabad, Peshawar, Quetta and Multan
+  (one batched request), plus their average as a Pakistan proxy. Each month from
+  2014 to the last full month is compared with the 1991-2020 normal of the same
+  calendar month; the next 16 forecast days are compared with the daily normal
+  (1991-2020, smoothed over 15 days, forecast offset removed using the last 14
+  days). If the Open-Meteo quota is exhausted it falls back to NASA POWER daily
+  data and says so.
+- **Sidebar badge** = live alerts at the current threshold: city-months in the
+  last 12 months plus places with forecast days at or above it. Hover it for the
+  breakdown.
+- **Historical** tab: the original Berkeley Earth list (Pakistan, 2001-2013,
+  1951-1980 normal), filtered by the same threshold.
+- **Threshold**: saved by an administrator in a signed cookie (survives logout
+  and serverless cold starts, but only in that browser), otherwise the
+  `ALERT_THRESHOLD` environment variable, otherwise 1.5 C. Vercel's filesystem is
+  read-only, so a single threshold shared by every user needs a database or KV
+  store (for example Vercel KV / Upstash Redis); none is added here.

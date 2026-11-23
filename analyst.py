@@ -184,14 +184,25 @@ class Analyst:
         return place, it, facts, chart
 
     def project_facts(self):
-        top = self.alerts[0] if self.alerts else None
-        return {
+        th = getattr(self, "threshold", 1.5)
+        hist = getattr(self, "historical", None)
+        if hist is None:
+            hist = [r for r in self.alerts if r[3] >= th]
+        top = max(hist, key=lambda r: r[3]) if hist else None
+        live = getattr(self, "live", None)
+        facts = {
             "dataset": "Berkeley Earth Surface Temperature: 10,064,718 records, 544,811 after cleaning, %d countries, yearly country data to 2013" % len(self.yearly),
             "pakistan_model": "Model 2 linear regression trained 1950-2000, test RMSE 0.52 C on 2001-2013; forecasts %s" % self.model["forecasts"],
-            "pakistan_alerts": "%d months 2001-2013 were >= 1.5 C above their 1951-1980 normal; biggest %s at +%s C" % (len(self.alerts), top[0][:7] if top else "-", top[3] if top else "-"),
+            "pakistan_alerts": "%d months 2001-2013 were >= %s C (the current alert threshold) above their 1951-1980 normal; biggest %s at +%s C" % (len(hist), th, top[0][:7] if top else "-", top[3] if top else "-"),
             "co2_correlation": "CO2 vs world land temperature 1959-2025: r = 0.9655",
             "pakistan_recent_era5": self.recent["pakistan_yearly"],
         }
+        if live:
+            facts["live_alerts"] = {"threshold_C": th, "count": live["badge"], "window": live["window"],
+                                    "recent_count": len(live["recent"]), "upcoming_count": len(live["upcoming"]),
+                                    "recent_months": live["recent"][:8], "upcoming_spells": live["upcoming"][:6],
+                                    "normal": "1991-2020, 6 major Pakistani cities and their average"}
+        return facts
 
     def country_facts(self, name, years):
         pts = [p for p in self.yearly.get(name, []) if p[0] >= 1900]
@@ -273,7 +284,12 @@ class Analyst:
                 return ("Our Pakistan trend model (Model 2) is a linear regression trained on 1950 to 2000 and tested on 2001 to 2013, with a test error (RMSE) of 0.52 C. "
                         "For any country on the Globe, the Projections page fits a newer model on ERA5 monthly data since 1980 and backtests it: it trains to 2015 and predicts 2016 onward so you can see the real error.")
             if it["alerts"]:
-                return ("%s. Those alerts count months at least 1.5 C above Pakistan's own 1951 to 1980 normal for that month. Open the Alerts page to change the threshold or test any month." % p["pakistan_alerts"])
+                la = p.get("live_alerts")
+                live_txt = ""
+                if la:
+                    live_txt = (" Live right now: %d alerts at +%s C (%d city-months in the last 12 months and %d places with forecast heat alerts in the next 16 days, versus the 1991-2020 normal)."
+                                % (la["count"], la["threshold_C"], la["recent_count"], la["upcoming_count"]))
+                return ("Historical: %s.%s An alert means a month (or forecast day) is at least the threshold hotter than normal for that month in that place. Open the Alerts page for the full list." % (p["pakistan_alerts"], live_txt))
             rp = p["pakistan_recent_era5"]
             return ("Happy to dig in. Pakistan is our focus country: ERA5 puts 2025 at %.2f C, among its hottest years, and the long-run Berkeley Earth model points to about %s C by 2050. "
                     "Ask me about any country or city, for example \"How has Karachi warmed since 1980?\", \"Will Germany be hotter by 2035?\" or \"What's the weather in Dubai this week?\"" %

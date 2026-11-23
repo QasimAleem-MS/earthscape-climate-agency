@@ -3,42 +3,42 @@
 {% block page_title %}Anomaly alerts{% endblock %}
 {% block page_sub %}Months hotter than their normal, with a live checker{% endblock %}
 {% block content %}
-<div class="alertbanner">
-  <div class="bhead">
-    <div class="btitle">
-      <span class="warnicon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
-      <div>
-        <h1>Anomaly Alerts</h1>
-        <div class="bsub">Stay informed about temperature anomalies and climate alerts.</div>
-      </div>
-    </div>
-    <span class="alertpill"><span class="dot">&#9679;</span> {{ alerts|length }} Active Alerts</span>
+<section class="al-explain reveal">
+  <div class="al-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4a2 2 0 10-4 0v9.26a4.5 4.5 0 104 0V4z"/><circle cx="12" cy="17.5" r="1.6" fill="currentColor" stroke="none"/></svg></div>
+  <div>
+    <h2>What is an alert?</h2>
+    <p>An alert means a <b>month</b> (or a <b>forecast day</b>) is at least <b class="thv">{{ threshold }}&nbsp;&deg;C hotter than normal</b> for that time of year in that place.
+    <b>Normal</b> = the average of the same calendar month: <b>1991&ndash;2020</b> for live alerts (ERA5, 6 major cities), <b>1951&ndash;1980</b> for the historical list (Berkeley Earth, Pakistan, 2001&ndash;2013).</p>
+    <p class="note">Current threshold <b>{{ threshold }}&nbsp;&deg;C</b>, {{ threshold_source }}. Administrators change it on the Admin page. Severity: <span class="pill mod">Moderate</span> below +2&nbsp;&deg;C &middot; <span class="pill high">High</span> +2 to +3&nbsp;&deg;C &middot; <span class="pill severe">Severe</span> +3&nbsp;&deg;C or more.</p>
   </div>
-  <div class="brow">
-    <div class="bseg tempseg">
-      <svg class="thermo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4a2 2 0 10-4 0v9.26a4.5 4.5 0 104 0V4z"/><circle cx="12" cy="17.5" r="1.6" fill="currentColor" stroke="none"/></svg>
-      <div>
-        <div class="n">+{{ threshold }}&deg;C</div>
-        <div class="l">Above Normal</div>
-      </div>
-    </div>
-    <div class="bseg bmid"><b>What is this page?</b> Some months are hotter than they should be. This page finds those months.<br>
-    <b>Step 1:</b> We took Pakistan's old record (1951 to 1980) and found the <b>normal</b> temperature of every month.<br>
-    <b>Step 2:</b> We checked every month from 2001 to 2013, one by one. Total months checked: {{ months_checked }}.<br>
-    <b>Step 3:</b> A month that came {{ threshold }}&deg;C or more hotter than its normal became an <b>alert</b>.<br>
-    <b>Result: {{ alerts|length }} alerts.</b> The red {{ alerts|length }} in the menu is this same number. Nothing here is typed by hand, the system counts it from the data.</div>
-    <div class="bseg periodseg">
-      <svg class="cal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-      <div>
-        <div class="pl">Affected Period</div>
-        <div class="pv">2001 &ndash; 2013</div>
-        <div class="pl">{{ months_checked }} months checked</div>
-      </div>
-    </div>
-    <div class="sparkwrap"><canvas id="sparkChart" height="70"></canvas></div>
+</section>
+
+<div class="tabs2" id="alTabs" role="tablist" style="max-width:640px">
+  <button type="button" class="on" data-v="live" role="tab">Live alerts</button>
+  <button type="button" data-v="hist" role="tab">Historical 2001&ndash;2013 &amp; checker</button>
+</div>
+
+<div id="liveView">
+  <div class="kpis" id="alKpis">
+    <div class="kpi" style="--c:var(--red)"><div class="k-lab"><i></i>Live alerts</div><div class="k-num" id="kLive">&hellip;</div><div class="k-sub" id="kLiveSub">last 12 months + next 16 days</div></div>
+    <div class="kpi" style="--c:var(--amber)"><div class="k-lab"><i></i>Hot months (last 12)</div><div class="k-num" id="kRecent">&hellip;</div><div class="k-sub" id="kWindow">&nbsp;</div></div>
+    <div class="kpi" style="--c:var(--pink)"><div class="k-lab"><i></i>Upcoming heat alerts</div><div class="k-num" id="kUp">&hellip;</div><div class="k-sub">places with hot forecast days (16 d)</div></div>
+    <div class="kpi" style="--c:var(--sky)"><div class="k-lab"><i></i>Since 2014</div><div class="k-num" id="kSince">&hellip;</div><div class="k-sub" id="kChecked">city-months at the threshold</div></div>
+  </div>
+  <div id="alEmpty"></div>
+  <div class="grid-7-5">
+    <div class="panel"><div class="phead"><div><h2>Pakistan, month by month since 2014</h2><p class="sub">Difference from the 1991&ndash;2020 normal (6-city average). Red bars cross the threshold line.</p></div><span class="tag" id="alSrc"></span></div><div class="chartbox"><canvas id="alMonthly"></canvas></div></div>
+    <div class="panel"><div class="phead"><div><h2>Next 16 days vs normal</h2><p class="sub">Forecast daily mean minus the daily normal, per city.</p></div></div><div class="chartbox"><canvas id="alUpcoming"></canvas></div></div>
+  </div>
+  <div class="panel">
+    <div class="phead"><div><h2>Alert list</h2><p class="sub" id="alListSub">Recent months and upcoming forecast spells at or above the threshold.</p></div>
+      <div class="seg" id="alRange"><button data-r="recent" class="on">Last 12 months</button><button data-r="all">All since 2014</button></div></div>
+    <div class="scrolltable" style="max-height:520px"><table class="altable"><thead><tr><th>Place</th><th>When</th><th>Actual</th><th>Normal</th><th>Difference</th><th>Severity</th></tr></thead><tbody id="alRows"><tr><td colspan="6"><div class="skeleton" style="height:160px"></div></td></tr></tbody></table></div>
+    <p class="note" id="alNote" style="margin-top:10px"></p>
   </div>
 </div>
 
+<div id="histView" style="display:none">
 <div class="alerts-grid">
   <div class="alerts-left">
     <div class="tabs">
@@ -157,6 +157,8 @@
   </div>
 </div>
 
+</div>
+
 <script>
 function showTab(name) {
   document.getElementById('viewChecker').style.display = name === 'checker' ? '' : 'none';
@@ -166,14 +168,6 @@ function showTab(name) {
 }
 document.getElementById('tabBtnChecker').addEventListener('click', () => showTab('checker'));
 document.getElementById('tabBtnData').addEventListener('click', () => showTab('data'));
-
-const sparkData = [{% for d, a, b, x in alerts %}{{ x }}{% if not loop.last %},{% endif %}{% endfor %}];
-new Chart(document.getElementById('sparkChart'), {type: 'line',
-  data: {labels: sparkData.map((_, i) => i + 1), datasets: [{data: sparkData, borderColor: '#FF5266',
-    backgroundColor: 'rgba(255,82,102,0.22)', fill: true, pointRadius: 1.6, pointBackgroundColor: '#FF8A94',
-    borderWidth: 2.5, tension: 0.3}]},
-  options: {plugins: {legend: {display: false}}, scales: {x: {display: false}, y: {display: false}},
-    events: [], animation: false, maintainAspectRatio: false}});
 
 const chkCountry = document.getElementById('chkCountry');
 function chkMode() {
@@ -243,5 +237,62 @@ document.getElementById('alertCountry').addEventListener('change', async (e) => 
   }
   box.innerHTML = h;
 });
+</script>
+
+<script>
+(function () {
+  var C = ES.C, data = null, range = 'recent';
+  document.querySelectorAll('#alTabs button').forEach(function (b) { b.onclick = function () {
+    document.querySelectorAll('#alTabs button').forEach(function (x) { x.classList.toggle('on', x === b); });
+    document.getElementById('liveView').style.display = b.dataset.v === 'live' ? '' : 'none';
+    document.getElementById('histView').style.display = b.dataset.v === 'hist' ? '' : 'none';
+  }; });
+  if (location.hash === '#historical') document.querySelector('#alTabs [data-v=hist]').click();
+  var M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  function mlabel(ym) { return M[+ym.slice(5, 7) - 1] + ' ' + ym.slice(0, 4); }
+  function dlabel(d) { var x = new Date(d + 'T12:00:00'); return x.getDate() + ' ' + M[x.getMonth()]; }
+  function pill(l) { return '<span class="pill ' + (l === 'Severe' ? 'severe' : l === 'High' ? 'high' : 'mod') + '">' + l + '</span>'; }
+  function bar(diff) { var w = Math.min(100, Math.max(4, diff / 5 * 100)); return '<span class="dbar"><i style="width:' + w + '%;background:' + (diff >= 3 ? C.red : diff >= 2 ? C.amber : '#FFD34D') + '"></i></span>'; }
+  function rows() {
+    var s = data.summary, th = data.threshold, html = '';
+    s.upcoming.forEach(function (u) {
+      html += '<tr class="up"><td><b>' + u.place + '</b></td><td>' + (u.days > 1 ? dlabel(u.start) + ' \u2013 ' + dlabel(u.end) + ' <span class="note">(' + u.days + ' hot days, forecast)</span>' : dlabel(u.start) + ' <span class="note">(1 alert day, forecast)</span>') + '</td><td>' + u.forecast.toFixed(1) + ' \u00b0C<br><span class="note">peak ' + dlabel(u.peak_date) + '</span></td><td>' + u.normal.toFixed(1) + ' \u00b0C</td><td><b>+' + u.diff.toFixed(1) + ' \u00b0C</b> ' + bar(u.diff) + '</td><td>' + pill(u.level) + '</td></tr>';
+    });
+    (range === 'recent' ? s.recent : s.since2014).forEach(function (r) {
+      html += '<tr><td><b>' + r.place + '</b></td><td>' + mlabel(r.ym) + '</td><td>' + r.actual.toFixed(2) + ' \u00b0C</td><td>' + r.normal.toFixed(2) + ' \u00b0C</td><td><b>+' + r.diff.toFixed(2) + ' \u00b0C</b> ' + bar(r.diff) + '</td><td>' + pill(r.level) + '</td></tr>';
+    });
+    document.getElementById('alRows').innerHTML = html || '<tr><td colspan="6" class="note">No alerts in this view: everything is within ' + th + ' \u00b0C of normal.</td></tr>';
+  }
+  document.querySelectorAll('#alRange button').forEach(function (b) { b.onclick = function () { document.querySelectorAll('#alRange button').forEach(function (x) { x.classList.toggle('on', x === b); }); range = b.dataset.r; rows(); }; });
+  ES.getJSON('/api/alerts/live', 5).then(function (d) {
+    data = d; var s = d.summary, th = d.threshold;
+    document.getElementById('kLive').textContent = s.badge;
+    document.getElementById('kRecent').textContent = s.recent.length;
+    document.getElementById('kWindow').textContent = mlabel(s.window[0]) + ' \u2013 ' + mlabel(s.window[1]);
+    document.getElementById('kUp').textContent = s.upcoming.length;
+    document.getElementById('kSince').textContent = s.since2014.length;
+    document.getElementById('kChecked').textContent = 'of ' + s.months_checked + ' city-months checked';
+    document.getElementById('alSrc').textContent = 'updated ' + d.built;
+    document.getElementById('alNote').innerHTML = '<b>Source:</b> ' + d.source + '. Normal: ' + d.normal + ' average of the same calendar month (or the same days of the year, smoothed over 15 days, for the forecast). Forecasts are adjusted for the small offset between the forecast model and the history data, measured over the last 14 days. Refreshed every 6 hours.';
+    if (d.fallback) { document.getElementById('kUp').textContent = '\u2013'; document.querySelector('#kUp + .k-sub').textContent = 'paused: ERA5 archive busy'; }
+    if (!s.badge) document.getElementById('alEmpty').innerHTML = '<div class="panel al-ok"><b>No alerts:</b> everything is within ' + th + ' \u00b0C of normal in the last 12 months and the next 16 days. The charts below show how close each month and day came.</div>';
+    rows();
+    var pk = d.places[0], mm = pk.months;
+    ES.chart('alMonthly', { type: 'bar', data: { labels: mm.map(function (r) { return r.ym; }), datasets: [
+      { label: 'Difference from normal', data: mm.map(function (r) { return r.diff; }), backgroundColor: mm.map(function (r) { return r.diff >= th ? ES.alpha(C.red, .9) : r.diff >= 0 ? ES.alpha(C.amber, .55) : ES.alpha(C.sky, .6); }), barPercentage: 1, categoryPercentage: .9, borderRadius: 1 },
+      { type: 'line', label: 'Threshold +' + th + ' \u00b0C', data: mm.map(function () { return th; }), borderColor: C.red, borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0 }] },
+      options: { plugins: { tooltip: { callbacks: { title: function (i) { return mlabel(i[0].label); }, label: function (i) { if (i.datasetIndex) return null; var r = mm[i.dataIndex]; return [' actual ' + r.actual + ' \u00b0C, normal ' + r.normal + ' \u00b0C', ' difference ' + ES.sign(r.diff) + ' \u00b0C' + (r.diff >= th ? ' \u2192 ALERT' : '')]; } } } }, scales: { x: { ticks: { maxTicksLimit: 10, maxRotation: 0, callback: function (v) { var l = this.getLabelForValue(v); return l.slice(5) === '01' ? l.slice(0, 4) : ''; }, autoSkip: false } }, y: { title: { display: true, text: '\u00b0C vs normal' } } } } });
+    if (d.fallback) { document.getElementById('alUpcoming').parentNode.innerHTML = '<div class="al-paused"><b>Upcoming forecast alerts are paused.</b><br>The free ERA5 archive is rate-limited right now, so there is no like-for-like daily normal to compare the forecast with. They come back automatically within 6 hours. The 16-day forecast itself is on the Globe (Present tab).</div>'; return; }
+    var colors = [C.cyan, C.sky, C.green, C.violet, C.amber, C.pink, '#fff'];
+    var labels = (d.places[1] || pk).days.map(function (x) { return dlabel(x.date); });
+    ES.chart('alUpcoming', { type: 'line', data: { labels: labels, datasets: d.places.map(function (p, i) {
+      return { label: p.name.replace(' (6-city average)', ' avg'), data: p.days.map(function (x) { return x.diff; }), borderColor: i === 0 ? '#fff' : colors[i - 1], borderWidth: i === 0 ? 3 : 1.6, pointRadius: 0 };
+    }).concat([{ label: 'Threshold', data: labels.map(function () { return th; }), borderColor: C.red, borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0 }]) },
+      options: { plugins: { legend: { labels: { font: { size: 10.5 } } } }, scales: { y: { title: { display: true, text: '\u00b0C vs daily normal' } }, x: { ticks: { maxTicksLimit: 8, maxRotation: 0 } } } } });
+  }).catch(function (e) {
+    document.getElementById('alRows').innerHTML = '<tr><td colspan="6"><div class="errbox">Live alerts are unavailable right now (' + e.message + '). The historical list is still available in the other tab.</div></td></tr>';
+    ['kLive', 'kRecent', 'kUp', 'kSince'].forEach(function (id) { document.getElementById(id).textContent = '\u2013'; });
+  });
+})();
 </script>
 {% endblock %}

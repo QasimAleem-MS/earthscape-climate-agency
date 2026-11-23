@@ -1,18 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Projections - EarthScape Climate Agency{% endblock %}
-{% block page_title %}Climate Projections &middot; 2 to 10 years{% endblock %}
+{% block page_title %}Climate Projections{% endblock %}
 {% block page_sub %}Trend + seasonality model on 55+ years of ERA5, cross-checked with CMIP6 climate models and backtested{% endblock %}
 {% block content %}
 <section class="orbit-hero reveal" style="min-height:250px">
   <div class="oh-copy">
-    <div class="eyebrow">From 14 days to 10 years</div>
+    <div class="eyebrow">Climate outlook</div>
     <h1 style="font-size:clamp(26px,3vw,38px);margin:10px 0 8px;color:#fff">Where is the climate heading?</h1>
-    <p class="oh-lead">Weather forecasts stop being useful after about two weeks. Climate is different: the <b>average</b> of many days follows a trend we can measure. Pick any place and we project its monthly and yearly mean temperature and rainfall up to 10 years ahead, with honest ranges.</p>
-    <div class="oh-mini">
-      <div class="m"><b>16 d</b><span>daily weather (Present)</span></div>
-      <div class="m"><b>10 y</b><span>climate outlook</span></div>
-      <div class="m"><b>2050</b><span>CMIP6 models</span></div>
-    </div>
+    <p class="oh-lead">Weather forecasts stop being useful after about two weeks. Climate is different: the <b>average</b> of many days follows a trend we can measure. Pick any place to see where its monthly and yearly mean temperature and rainfall are heading, with honest ranges.</p>
   </div>
   <div class="oh-earth" style="min-height:250px"><div class="earth3d" data-earth='{"lat":30,"lng":70,"altitude":1.9,"speed":0.4}'></div></div>
 </section>

@@ -24,7 +24,7 @@
 
 <div class="panel reveal">
   <div class="phead"><div><h2>Live prediction tool</h2><p class="sub">Pick a country and any year from 2014 to 2100. Pakistan uses the official Model 2; other countries use the same method fitted live on their yearly data from 1950.</p></div>
-  <a class="chip" href="{{ url_for('projections_page') }}">New: 2&ndash;10 year projections with ranges &rarr;</a></div>
+  <a class="chip" href="{{ url_for('projections_page') }}">Long-range projections with ranges &rarr;</a></div>
   <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
     <div style="min-width:220px;flex:1;max-width:320px"><label>Country / region</label>
       <select id="predCountry">{% for c in countries %}<option value="{{ c }}" {% if c == 'Pakistan' %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>

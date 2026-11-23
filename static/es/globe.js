@@ -19,7 +19,7 @@
   }
   function hoverHtml(f) {
     var p = f.properties, w = S.warming[p.name];
-    return '<b>' + flag(p.iso) + ' ' + p.name + '</b><br><span style="color:#8FA6C8">' + (w ? 'Warming ' + ES.sign(w.warming) + ' \u00b0C (2004\u201313 vs 1951\u201380) \u00b7 ' + ES.sign(w.per_decade, 2) + ' \u00b0C/dec' : 'No Berkeley Earth series') + '</span><br><span style="color:#3EE0FF">Click for past \u00b7 present \u00b7 future</span>';
+    return '<b>' + flag(p.iso) + ' ' + p.name + '</b><br><span style="color:#8FA6C8">' + (w ? 'Warming ' + ES.sign(w.warming) + ' \u00b0C (2004\u201313 vs 1951\u201380) \u00b7 ' + ES.sign(w.per_decade, 2) + ' \u00b0C/dec' + (w.dataset_name && w.dataset_name !== p.name ? ' (series: ' + w.dataset_name + ')' : '') : 'No Berkeley Earth series') + '</span><br><span style="color:#3EE0FF">Click for past \u00b7 present \u00b7 future</span>';
   }
   function setHover(f) {
     if (S.hover === f) return; S.hover = f;
@@ -46,16 +46,50 @@
     var ctl = g.controls(); ctl.autoRotate = !ES.reduceMotion; ctl.autoRotateSpeed = 0.35; ctl.minDistance = 130; ctl.maxDistance = 600;
     g.pointOfView({ lat: 25, lng: 68, altitude: 2.2 }, 0);
     wrap.addEventListener('pointerdown', function () { ctl.autoRotate = false; });
+    ctl.addEventListener('change', queueDeclutter);
     new ResizeObserver(function () { g.width(wrap.clientWidth).height(wrap.clientHeight); }).observe(wrap);
     document.addEventListener('visibilitychange', function () { document.hidden ? g.pauseAnimation() : g.resumeAnimation(); });
   }
   function cityEl(c) {
-    var el = document.createElement('div'); el.className = 'citylabel'; el.style.background = ES.tempColor(c.temp);
+    var el = c._el = document.createElement('div'); el.className = 'citylabel hid'; el.style.background = ES.tempColor(c.temp);
     el.innerHTML = Math.round(c.temp) + '\u00b0<span>' + c.city + '</span>';
     el.title = c.city + ', ' + c.country + ': ' + ES.fmt(c.temp, 1) + ' \u00b0C, ' + c.sky;
     el.onclick = function (e) { e.stopPropagation(); openPlace({ name: c.city, country: c.country, lat: c.lat, lon: c.lon, kind: 'city' }); };
     return el;
   }
+
+  /* ---------------- label declutter ----------------
+     Chips are shown only on the front of the globe and away from its limb,
+     never under the open panel or outside the frame, and never on top of each
+     other: a greedy pass keeps the highest-priority chip in each spot
+     (Pakistan first, then the most extreme temperatures). Zoom in to see more. */
+  var PRIO_PK = { Pakistan: 1 };
+  function priority(c) { return (PRIO_PK[c.country] ? 100 : 0) + Math.abs((c.temp || 0) - 15) + (c.city === 'Karachi' || c.city === 'Islamabad' ? 50 : 0); }
+  var declutterQueued = false;
+  function queueDeclutter() { if (declutterQueued) return; declutterQueued = true; requestAnimationFrame(function () { declutterQueued = false; declutter(); }); }
+  function declutter() {
+    var g = S.g; if (!g || !S.labels) return;
+    var pov = g.pointOfView(), rad = Math.PI / 180;
+    var cl = Math.cos(pov.lat * rad), sl = Math.sin(pov.lat * rad);
+    var wr = wrap.getBoundingClientRect(), pr = page.getBoundingClientRect(), dr = drawer.classList.contains('open') ? drawer.getBoundingClientRect() : null;
+    var limb = pov.altitude > 2.6 ? 0.45 : pov.altitude > 1.6 ? 0.32 : 0.2;   // how far from the edge a chip must be
+    var placed = [];
+    S.cities.slice().sort(function (a, b) { return priority(b) - priority(a); }).forEach(function (c) {
+      if (!c._el) return;
+      var dot = cl * Math.cos(c.lat * rad) * Math.cos((c.lon - pov.lng) * rad) + sl * Math.sin(c.lat * rad);
+      var show = dot > limb;
+      if (show) {
+        var sc = g.getScreenCoords(c.lat, c.lon, 0.012), x = wr.left + sc.x, y = wr.top + sc.y;
+        var w = 34 + c.city.length * 6.2, h = 20, box = [x - w / 2 - 2, y - h / 2 - 2, x + w / 2 + 2, y + h / 2 + 2];
+        if (box[0] < pr.left + 4 || box[2] > pr.right - 4 || box[1] < pr.top + 60 || box[3] > pr.bottom - 4) show = false;
+        if (show && dr && box[2] > dr.left) show = false;
+        if (show && placed.some(function (b) { return !(box[2] < b[0] || box[0] > b[2] || box[3] < b[1] || box[1] > b[3]); })) show = false;
+        if (show) placed.push(box);
+      }
+      c._el.classList.toggle('hid', !show);
+    });
+  }
+  setInterval(function () { if (!document.hidden) queueDeclutter(); }, 400);
 
   /* ---------------- flat map (2D canvas, equirectangular) ---------------- */
   var fcv = document.createElement('canvas'); flatWrap.appendChild(fcv); var paths = [];

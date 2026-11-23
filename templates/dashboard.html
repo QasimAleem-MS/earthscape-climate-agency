@@ -10,7 +10,7 @@
     <p class="oh-lead">Warmest year in the Berkeley Earth record ({{ dash.warmest[0] }}) versus Pakistan's 1951&ndash;1980 normal of {{ dash.baseline }}&nbsp;&deg;C. ERA5 puts <b>2025 at {{ recent.pakistan_yearly['2025'] }}&nbsp;&deg;C</b>, one of the hottest years yet.</p>
     <div class="oh-mini">
       <div class="m"><b>{{ dash.warming_count }}/{{ dash.warming_total }}</b><span>countries warmer</span></div>
-      <div class="m"><b>{{ stats.anomalies }}</b><span>alert months</span></div>
+      <div class="m"><b data-live-alerts>{{ alert_count if alert_count != "" else "&hellip;"|safe }}</b><span>live heat alerts</span></div>
       <div class="m"><b>{{ stats.forecast_2050 }}&deg;</b><span>Pakistan 2050</span></div>
       <div class="m"><b>r {{ stats.correlation }}</b><span>CO&#8322; &harr; heat</span></div>
     </div>
@@ -18,10 +18,10 @@
   <div class="oh-earth"><div class="earth3d" data-earth='{"lat":28,"lng":68,"altitude":1.75,"speed":0.5}'></div></div>
 </section>
 
-<div class="kpis">
+<div class="kpis six">
   <div class="kpi reveal" style="--c:var(--sky)"><div class="k-lab"><i></i>Records processed</div><div class="k-num"><span data-count="10.06" data-dec="2">10.06</span><small>M</small></div><div class="k-sub">{{ stats.cleaned_rows }} clean rows used</div><div class="k-spark"><canvas id="spRecords"></canvas></div></div>
   <div class="kpi reveal" style="--c:var(--green)"><div class="k-lab"><i></i>Countries covered</div><div class="k-num"><span data-count="{{ stats.countries }}">{{ stats.countries }}</span></div><div class="k-sub">177 clickable on the 3D globe</div><div class="k-spark"><canvas id="spCountries"></canvas></div></div>
-  <div class="kpi reveal" style="--c:var(--red)"><div class="k-lab"><i></i>Very hot months</div><div class="k-num"><span data-count="{{ stats.anomalies }}">{{ stats.anomalies }}</span><small>2001&ndash;13</small></div><div class="k-sub">&ge; 1.5&nbsp;&deg;C above normal</div><div class="k-spark"><canvas id="spAlerts"></canvas></div></div>
+  <div class="kpi reveal" style="--c:var(--red)"><div class="k-lab"><i></i>Very hot months</div><div class="k-num"><span data-count="{{ stats.anomalies }}">{{ stats.anomalies }}</span><small>2001&ndash;13</small></div><div class="k-sub">&ge; {{ stats.threshold }}&nbsp;&deg;C above the 1951&ndash;80 normal</div><div class="k-spark"><canvas id="spAlerts"></canvas></div></div>
   <div class="kpi reveal" style="--c:var(--amber)"><div class="k-lab"><i></i>CO&#8322; &harr; heat link</div><div class="k-num"><span data-count="{{ stats.correlation }}" data-dec="4">{{ stats.correlation }}</span></div><div class="k-sub">Pearson r, 1959&ndash;2025</div><div class="k-spark"><canvas id="spCo2"></canvas></div></div>
   <div class="kpi reveal" style="--c:var(--violet)"><div class="k-lab"><i></i>Pakistan in 2050</div><div class="k-num"><span data-count="{{ stats.forecast_2050 }}" data-dec="2">{{ stats.forecast_2050 }}</span><small>&deg;C</small></div><div class="k-sub">Model 2 trend estimate</div><div class="k-spark"><canvas id="spTrend"></canvas></div></div>
   <div class="kpi reveal" style="--c:var(--cyan)"><div class="k-lab"><i></i>Pakistan 2025 (ERA5)</div><div class="k-num"><span data-count="{{ recent.pakistan_yearly['2025'] }}" data-dec="2">{{ recent.pakistan_yearly['2025'] }}</span><small>&deg;C</small></div><div class="k-sub">{{ '%+.2f'|format(dash.yoy[-1][1]) }}&nbsp;&deg;C vs 2024</div><div class="k-spark"><canvas id="spRecent"></canvas></div></div>
@@ -72,7 +72,7 @@
 
 <div class="grid2">
   <div class="panel reveal">
-    <div class="phead"><div><h2>Very hot months per year</h2><p class="sub">Count of alert months (&ge; 1.5&nbsp;&deg;C above normal).</p></div></div>
+    <div class="phead"><div><h2>Very hot months per year</h2><p class="sub">Pakistan months &ge; {{ stats.threshold }}&nbsp;&deg;C above their 1951&ndash;1980 normal (current alert threshold).</p></div></div>
     <div class="chartbox"><canvas id="anomChart"></canvas></div>
   </div>
   <div class="panel reveal">
@@ -107,8 +107,8 @@
   <h2>Key findings</h2>
   <div class="insights-row" style="margin-top:10px">
     <div class="insight"><span class="ico">1</span><div><b>Hotter every decade</b><span>Pakistan's trend line rises steadily; the 2010s sit well above the 1951&ndash;1980 normal.</span></div></div>
-    <div class="insight"><span class="ico" style="color:var(--violet);background:rgba(139,124,255,.14)">2</span><div><b>{{ stats.forecast_2050 }}&nbsp;&deg;C by 2050</b><span>Model 2 estimate. Open Projections for 2&ndash;10 year outlooks with ranges.</span></div></div>
-    <div class="insight"><span class="ico" style="color:var(--red);background:rgba(255,82,102,.14)">3</span><div><b>{{ stats.anomalies }} alert months</b><span>2001&ndash;2013; the record was March 2010 at +4.31&nbsp;&deg;C.</span></div></div>
+    <div class="insight"><span class="ico" style="color:var(--violet);background:rgba(139,124,255,.14)">2</span><div><b>{{ stats.forecast_2050 }}&nbsp;&deg;C by 2050</b><span>Model 2 estimate. Open Projections for outlooks with ranges.</span></div></div>
+    <div class="insight"><span class="ico" style="color:var(--red);background:rgba(255,82,102,.14)">3</span><div><b>{{ stats.anomalies }} alert months</b><span>2001&ndash;2013 at &ge; {{ stats.threshold }}&nbsp;&deg;C; the record was March 2010 at +4.31&nbsp;&deg;C. Live alerts are on the Alerts page.</span></div></div>
     <div class="insight"><span class="ico" style="color:var(--amber);background:rgba(255,181,71,.14)">4</span><div><b>r = {{ stats.correlation }}</b><span>More CO&#8322; in the air, more heat: a very strong link.</span></div></div>
   </div>
 </div>

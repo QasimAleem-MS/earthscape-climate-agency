@@ -6,7 +6,8 @@
 <meta name="theme-color" content="#04070F">
 <title>{% block title %}EarthScape Climate Agency{% endblock %}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet"></noscript>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='es/theme.css') }}">
 {% block head %}{% endblock %}
@@ -50,12 +51,12 @@
     <nav class="sidenav">
       <div class="navsec">Overview</div>
       {{ nav('dashboard', 'home', 'Dashboard') }}
-      {{ nav('globe_page', 'globe', 'Live Globe', '<span class="new">NEW</span>') }}
-      {{ nav('projections_page', 'orbit', 'Projections', '<span class="new">10Y</span>') }}
+      {{ nav('globe_page', 'globe', 'Live Globe') }}
+      {{ nav('projections_page', 'orbit', 'Projections') }}
       <div class="navsec">Analysis</div>
       {{ nav('explorer', 'bars', 'Data Explorer') }}
       {{ nav('predictions', 'trend', 'Predictions') }}
-      {{ nav('alerts', 'bell', 'Alerts', '<span class="navbadge">' ~ alert_count ~ '</span>') }}
+      {{ nav('alerts', 'bell', 'Alerts', '<span class="navbadge" id="alertBadge" data-th="' ~ alert_badge.threshold ~ '" title="Live heat alerts at +' ~ alert_badge.threshold ~ ' °C or more above normal">' ~ (alert_count if alert_count != '' else '…') ~ '</span>') }}
       {{ nav('correlation', 'link', 'Correlation') }}
       {{ nav('weather_page', 'cloud', 'Live Weather') }}
       {{ nav('upload', 'upload', 'Upload Data') }}
@@ -93,6 +94,14 @@
 <script src="{{ url_for('static', filename='es/chat.js') }}" defer></script>
 <script>
   (function () {
+    /* live alert badge: count + explanatory tooltip from the cached live alerts */
+    var badge = document.getElementById('alertBadge');
+    if (badge) fetch('/api/alerts/summary', { headers: { 'X-Requested-With': 'fetch' } }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.badge == null) { badge.textContent = d.historical; badge.title = 'Live alerts unavailable right now. Showing the ' + d.historical + ' historical alert months (2001-2013) at +' + d.threshold + ' \u00b0C.'; return; }
+      badge.textContent = d.badge; badge.classList.toggle('zero', d.badge === 0);
+      badge.title = d.badge + ' live heat alerts: ' + d.recent + ' city-months in the last 12 months (' + d.window[0] + ' to ' + d.window[1] + ') and ' + d.upcoming + ' places with forecast heat alerts in the next 16 days, each at least ' + d.threshold + ' \u00b0C hotter than normal. Click for details.';
+      document.querySelectorAll('[data-live-alerts]').forEach(function (el) { el.textContent = d.badge; });
+    }).catch(function () {});
     var btn = document.getElementById('menuBtn');
     var nav = document.querySelector('.sidenav');
     if (btn && nav) {

@@ -14,6 +14,8 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from functools import wraps
 import csv, io, json, os, re, secrets, statistics, tempfile, time, urllib.parse, urllib.request, uuid
 import climate_lib
+import live_alerts
+from itsdangerous import URLSafeSerializer, BadSignature
 from analyst import Analyst
 
 app = Flask(__name__)
@@ -39,22 +41,63 @@ FIRST_YEAR = min(p[0][0] for p in YEARLY.values() if p)
 SETTINGS_FILE = os.path.join(BASE, "data", "settings.json")
 _threshold_global = [None]
 
-def current_threshold():
-    if session.get("threshold"):
-        return float(session["threshold"])
+THRESHOLD_COOKIE = "es_threshold"
+
+def _threshold_signer():
+    return URLSafeSerializer(app.secret_key, salt="es-alert-threshold")
+
+def threshold_info():
+    """The alert threshold and where it came from, in priority order:
+    1. a signed cookie written when an admin saves it (survives logout and cold starts, this browser only);
+    2. the value saved on this server instance (lost on a serverless cold start);
+    3. data/settings.json (works locally; Vercel's filesystem is read-only);
+    4. the ALERT_THRESHOLD environment variable (deployment-wide default);
+    5. 1.5 C, the project's default.
+    A setting shared by every user on every instance needs a database or KV store."""
+    raw = request.cookies.get(THRESHOLD_COOKIE) if request else None
+    if raw:
+        try:
+            v = float(_threshold_signer().loads(raw))
+            if 0.5 <= v <= 5.0:
+                return v, "saved by an administrator in this browser"
+        except (BadSignature, ValueError, TypeError):
+            pass
     if _threshold_global[0] is not None:
-        return _threshold_global[0]
+        return _threshold_global[0], "set by an administrator on this server"
     try:
         with open(SETTINGS_FILE) as f:
-            return float(json.load(f)["threshold"])
+            return float(json.load(f)["threshold"]), "saved in data/settings.json"
     except Exception:
-        return ALERT_THRESHOLD
+        pass
+    try:
+        v = float(os.environ.get("ALERT_THRESHOLD", ""))
+        if 0.5 <= v <= 5.0:
+            return v, "deployment default (ALERT_THRESHOLD)"
+    except ValueError:
+        pass
+    return ALERT_THRESHOLD, "project default"
+
+def current_threshold():
+    return threshold_info()[0]
+
+def historical_alerts(th=None):
+    """Pakistan months 2001-2013 at or above the threshold (Berkeley Earth, 1951-1980 normal),
+    the same filter the Alerts page uses."""
+    th = current_threshold() if th is None else th
+    return [r for r in MONTHS_CHECKED if r[3] >= th]
 MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July",
                "August", "September", "October", "November", "December"]
 
 @app.context_processor
 def inject_alert_count():
-    return {"alert_count": len(ALERTS), "site_stats": {"countries": len(YEARLY), "first_year": FIRST_YEAR,
+    """Sidebar badge: live alerts at the current threshold when the 6-hour live cache is
+    warm; otherwise a placeholder that the page fills from /api/alerts/summary."""
+    th = current_threshold()
+    live = live_alerts.cached()
+    s = live_alerts.summarize(live, th) if live else None
+    badge = {"count": s["badge"] if s else None, "threshold": th,
+             "recent": len(s["recent"]) if s else None, "upcoming": len(s["upcoming"]) if s else None}
+    return {"alert_count": badge["count"] if s else "", "alert_badge": badge, "site_stats": {"countries": len(YEARLY), "first_year": FIRST_YEAR,
             "globe_countries": len(COUNTRY_GEO), "records": "10M+"}}
 
 def wants_json():
@@ -114,6 +157,8 @@ def login_required(f):
     @wraps(f)
     def wrap(*a, **kw):
         if "user" not in session:
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "Please sign in again (your session has ended)."}), 401
             return redirect(url_for("login"))
         return f(*a, **kw)
     return wrap
@@ -248,13 +293,18 @@ def dashboard():
         "total_records": "10,064,718",
         "cleaned_rows": "544,811",
         "countries": len(YEARLY),
-        "anomalies": len(ALERTS),
+        "anomalies": len(historical_alerts()),
+        "threshold": current_threshold(),
         "correlation": "0.9655",
         "forecast_2050": MODEL["forecasts"]["2050"],
     }
     pak = YEARLY["Pakistan"]
+    per_year = {}
+    for r in historical_alerts():
+        per_year[r[0][:4]] = per_year.get(r[0][:4], 0) + 1
+    per_year = {str(y): per_year.get(str(y), 0) for y in range(2001, 2014)}
     return render_template("dashboard.html", stats=stats, pakistan=pak,
-                           model=MODEL, anom_per_year=ANOM_PER_YEAR,
+                           model=MODEL, anom_per_year=per_year,
                            recent=RECENT, dash=dashboard_data())
 
 COMPARE_COUNTRIES = ["Pakistan", "India", "Afghanistan", "Iran", "China", "Saudi Arabia",
@@ -329,8 +379,9 @@ def predictions():
 @login_required
 def alerts():
     th = current_threshold()
-    rows = [r for r in MONTHS_CHECKED if r[3] >= th]
-    return render_template("alerts.html", alerts=rows, threshold=th,
+    rows = historical_alerts(th)
+    th_source = threshold_info()[1]
+    return render_template("alerts.html", alerts=rows, threshold=th, threshold_source=th_source,
                            months_checked=len(MONTHS_CHECKED),
                            countries=sorted(YEARLY.keys()))
 
@@ -614,12 +665,13 @@ def daily_series(place, start, end):
                 if i < len(vals) and vals[i] is not None and row.get(key) is None:
                     row[key] = vals[i]
 
+    archive_error = None
     try:
         absorb(fetch_json("https://archive-api.open-meteo.com/v1/archive?latitude=%s&longitude=%s"
                           "&start_date=%s&end_date=%s&daily=%s&timezone=auto"
                           % (lat, lon, start, end, DAILY_VARS)))
-    except Exception:
-        pass
+    except Exception as e:
+        archive_error = e
     today = dt.date.today()
     if dt.date.fromisoformat(end) >= today - dt.timedelta(days=10):
         try:
@@ -639,6 +691,8 @@ def daily_series(place, start, end):
         out.append({"date": key, "tmean": row.get("tmean"), "tmax": row.get("tmax"),
                     "tmin": row.get("tmin"), "rain": row.get("rain"), "wind": row.get("wind")})
         cur += dt.timedelta(days=1)
+    if archive_error is not None and not any(r["tmean"] is not None for r in out):
+        raise archive_error   # say "service busy", not "no data for this date"
     return out
 
 def parse_date(value):
@@ -666,7 +720,7 @@ def api_weather_day():
             return jsonify({"error": "City not found. Please check the spelling."}), 404
         rows = daily_series(place, day.isoformat(), day.isoformat())
     except Exception:
-        return jsonify({"error": "The weather service did not respond. Please try again in a moment."}), 502
+        return jsonify({"error": "The free weather archive (Open-Meteo) is busy or rate-limited right now. Please try again in a few minutes."}), 502
     row = rows[0] if rows else {}
     if row.get("tmean") is None and row.get("tmax") is None:
         return jsonify({"error": "Data for this date is not available yet. Very recent days can take a few days to appear in the archive."}), 404
@@ -699,7 +753,7 @@ def api_weather_range():
             return jsonify({"error": "City not found. Please check the spelling."}), 404
         rows = daily_series(place, start.isoformat(), end.isoformat())
     except Exception:
-        return jsonify({"error": "The weather service did not respond. Please try again in a moment."}), 502
+        return jsonify({"error": "The free weather archive (Open-Meteo) is busy or rate-limited right now. Please try again in a few minutes."}), 502
     have = [r for r in rows if r.get("tmean") is not None]
     if not have:
         return jsonify({"error": "No data is available for this period yet."}), 404
@@ -746,8 +800,9 @@ def api_weather_hourly():
             absorb_h(fetch_json("https://archive-api.open-meteo.com/v1/archive?latitude=%s&longitude=%s"
                                 "&start_date=%s&end_date=%s&hourly=temperature_2m,relative_humidity_2m&timezone=auto"
                                 % (lat, lon, dstr, dstr)))
-        except Exception:
-            pass
+        except Exception as e:
+            if day < dt.date.today() - dt.timedelta(days=10):
+                raise e
         if day >= dt.date.today() - dt.timedelta(days=10):
             try:
                 absorb_h(fetch_json("https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s"
@@ -756,7 +811,7 @@ def api_weather_hourly():
             except Exception:
                 pass
     except Exception:
-        return jsonify({"error": "The weather service did not respond. Please try again in a moment."}), 502
+        return jsonify({"error": "The free weather archive (Open-Meteo) is busy or rate-limited right now. Please try again in a few minutes."}), 502
     rows = [{"time": t, "hour": t[11:16], "temperature": v.get("temp"), "humidity": v.get("humidity")}
             for t, v in sorted(hours.items()) if v.get("temp") is not None]
     if not rows:
@@ -781,7 +836,7 @@ def api_weather_months():
             return jsonify({"error": "City not found. Please check the spelling."}), 404
         rows = daily_series(place, "%d-01-01" % year, "%d-12-31" % year)
     except Exception:
-        return jsonify({"error": "The weather service did not respond. Please try again in a moment."}), 502
+        return jsonify({"error": "The free weather archive (Open-Meteo) is busy or rate-limited right now. Please try again in a few minutes."}), 502
     months = []
     for mth in range(1, 13):
         part = [r for r in rows if int(r["date"][5:7]) == mth and r.get("tmean") is not None]
@@ -848,7 +903,9 @@ def api_place_past():
     if not ll:
         return jsonify({"error": "Valid lat and lon are required."}), 400
     try:
-        return jsonify(climate_lib.past_summary(*ll))
+        resp = jsonify(climate_lib.past_summary(*ll))
+        resp.headers["Cache-Control"] = "private, max-age=43200"
+        return resp
     except Exception as e:
         return _service_error(e)
 
@@ -874,7 +931,9 @@ def api_place_projection():
     except ValueError:
         years = 10
     try:
-        return jsonify(climate_lib.projection(ll[0], ll[1], years, with_cmip=False))
+        resp = jsonify(climate_lib.projection(ll[0], ll[1], years, with_cmip=False))
+        resp.headers["Cache-Control"] = "private, max-age=43200"
+        return resp
     except Exception as e:
         return _service_error(e)
 
@@ -916,9 +975,13 @@ def api_place_cmip6():
     if not ll:
         return jsonify({"error": "Valid lat and lon are required."}), 400
     try:
-        return jsonify(climate_lib.cmip6_for(ll[0], ll[1], int(request.args.get("years", 10) or 10)))
+        resp = jsonify(climate_lib.cmip6_for(ll[0], ll[1], int(request.args.get("years", 10) or 10)))
+        resp.headers["Cache-Control"] = "private, max-age=604800"   # model output to 2050 does not change
+        return resp
     except Exception as e:
-        return _service_error(e)
+        resp, code = _service_error(e)
+        resp.headers["Retry-After"] = "60"
+        return resp, code
 
 @app.route("/api/geocode")
 @login_required
@@ -948,6 +1011,32 @@ def api_live_cities():
                     "windiest": max(have, key=lambda r: r["wind"] or 0) if have else None,
                     "reporting": len(have), "total": len(rows)})
 
+@app.route("/api/alerts/live")
+@login_required
+def api_alerts_live():
+    try:
+        data = live_alerts.get()
+    except Exception as e:
+        return _service_error(e)
+    th, src = threshold_info()
+    out = {"summary": live_alerts.summarize(data, th), "places": data["places"], "last_month": data["last_month"],
+           "built": data["built"], "normal": data["normal"], "source": data["source"], "fallback": data.get("fallback", False),
+           "threshold": th, "threshold_source": src}
+    resp = jsonify(out)
+    resp.headers["Cache-Control"] = "private, max-age=600"
+    return resp
+
+@app.route("/api/alerts/summary")
+@login_required
+def api_alerts_summary():
+    th = current_threshold()
+    try:
+        s = live_alerts.summarize(live_alerts.get(), th)
+        return jsonify({"badge": s["badge"], "recent": len(s["recent"]), "upcoming": len(s["upcoming"]),
+                        "threshold": th, "window": s["window"], "historical": len(historical_alerts(th))})
+    except Exception:
+        return jsonify({"badge": None, "threshold": th, "historical": len(historical_alerts(th))})
+
 @app.route("/api/public/pulse")
 def api_public_pulse():
     """Tiny public endpoint for the sign-in page: Karachi right now."""
@@ -965,6 +1054,10 @@ def api_chat():
     if not q:
         return jsonify({"error": "Ask me something about the climate."}), 400
     try:
+        ANALYST.threshold = current_threshold()
+        ANALYST.historical = historical_alerts(ANALYST.threshold)
+        live = live_alerts.cached()
+        ANALYST.live = live_alerts.summarize(live, ANALYST.threshold) if live else None
         out = ANALYST.answer(q[:1500], body.get("history") or [], body.get("context") or {})
     except Exception:
         out = {"reply": "I hit a snag pulling the data for that one. Try asking about a specific country or city, for example \"How has Karachi warmed since 1980?\"",
@@ -1009,7 +1102,7 @@ def feedback():
 @app.route("/help")
 @login_required
 def help_page():
-    return render_template("help.html")
+    return render_template("help.html", threshold=current_threshold())
 
 # ---------------- Admin ----------------
 @app.route("/admin")
@@ -1065,14 +1158,16 @@ def set_threshold():
         flash("Threshold must be between 0.5 and 5.0 C.", "error")
         return redirect(url_for("admin"))
     _threshold_global[0] = val
-    session["threshold"] = val
     try:
         with open(SETTINGS_FILE, "w") as f:
             json.dump({"threshold": val}, f)
     except OSError:
-        pass  # read-only hosting: value still applies for this deployment session
-    flash("Alert threshold updated to %g C." % val)
-    return redirect(url_for("admin"))
+        pass  # read-only hosting (Vercel): the signed cookie below keeps it
+    flash("Alert threshold updated to %g C. Alerts, the badge and the dashboard now use it." % val)
+    resp = redirect(url_for("admin"))
+    resp.set_cookie(THRESHOLD_COOKIE, _threshold_signer().dumps(val), max_age=365 * 86400,
+                    httponly=True, samesite="Lax", secure=request.is_secure)
+    return resp
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

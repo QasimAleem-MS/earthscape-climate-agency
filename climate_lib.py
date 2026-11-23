@@ -29,7 +29,10 @@ _LOCK = threading.Lock()
 ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
 FORECAST = "https://api.open-meteo.com/v1/forecast"
 CLIMATE = "https://climate-api.open-meteo.com/v1/climate"
-CMIP_MODELS = ["EC_Earth3P_HR", "MPI_ESM1_2_XR", "MRI_AGCM3_2_S"]
+# two well-behaved HighResMIP models, temperature only: about a third of the
+# API "weight" of the original 4-model request, so it stays inside the free limits
+CMIP_MODELS = ["EC_Earth3P_HR", "MRI_AGCM3_2_S"]
+_CMIP_MEM = {}
 HISTORY_START = 1970
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
@@ -50,7 +53,7 @@ def _key(url):
     return hashlib.sha1(url.encode()).hexdigest()
 
 
-def cached_json(url, ttl, timeout=20):
+def cached_json(url, ttl, timeout=20, backoff=(0.4,)):
     """GET a JSON url with a memory + disk cache (ttl seconds). Raises on failure
     unless a stale copy exists, which is then returned instead."""
     k = _key(url)
@@ -74,7 +77,7 @@ def cached_json(url, ttl, timeout=20):
     except Exception:
         stale = None
     last_err = None
-    for attempt in range(2):
+    for attempt in range(len(backoff) + 1):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "EarthScapeClimateAgency/2.0"})
             with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -92,9 +95,10 @@ def cached_json(url, ttl, timeout=20):
             except OSError:
                 pass
             return data
-        except Exception as e:  # network or API error
+        except Exception as e:  # network or API error, retried with backoff
             last_err = e
-            time.sleep(0.4)
+            if attempt < len(backoff):
+                time.sleep(backoff[attempt])
     if stale is not None:
         return stale
     raise last_err
@@ -442,14 +446,14 @@ def _predict_year(model, y):
 
 
 def cmip6(lat, lon, first_year, last_year, obs_annual):
-    """Annual mean temperature and rain from 3 CMIP6 HighResMIP models (Open-Meteo
+    """Annual mean temperature from 2 CMIP6 HighResMIP models (Open-Meteo
     climate API, already downscaled and bias-corrected to ERA5-Land). We also
     remove any remaining offset against our ERA5 observations over 2015 to 2024."""
     last_year = min(last_year, 2049)
     url = CLIMATE + "?" + _q(latitude=round(float(lat), 2), longitude=round(float(lon), 2),
                              start_date="2015-01-01", end_date="%d-12-31" % last_year,
                              models=",".join(CMIP_MODELS), daily="temperature_2m_mean")
-    data = cached_json(url, ttl=30 * 86400, timeout=25)
+    data = cached_json(url, ttl=60 * 86400, timeout=20, backoff=(1.5, 4.0))
     d = data.get("daily") or {}
     times = d.get("time") or []
     obs = dict(obs_annual)
@@ -476,7 +480,7 @@ def cmip6(lat, lon, first_year, last_year, obs_annual):
                         })
     return {"models": list(models.keys()), "ensemble": ens,
             "per_model": {m: [[y, rnd(v[0])] for y, v in sorted(models[m].items())] for m in models},
-            "note": "CMIP6 HighResMIP models via the Open-Meteo Climate API (high-emission pathway, close to RCP8.5), "
+            "note": "Two CMIP6 HighResMIP models (EC-Earth3P-HR, MRI-AGCM3-2-S) via the Open-Meteo Climate API (high-emission pathway, close to RCP8.5), "
                     "downscaled to about 10 km and bias-corrected to ERA5-Land. Remaining offset to our ERA5 record removed using 2015 to 2024."}
 
 
@@ -539,7 +543,7 @@ def projection(lat, lon, years=10, with_cmip=True):
     cm = None
     if with_cmip:
         try:
-            cm = cmip6(lat, lon, first_future, last["y"] + years, ann_t)
+            cm = cmip6_for(lat, lon, years)
         except Exception:
             cm = {"error": "CMIP6 models are busy (free API rate limit). Try again in a minute."}
     f = model["fit"]
@@ -572,6 +576,15 @@ def geocode(name):
 
 
 def cmip6_for(lat, lon, years=10):
+    """CMIP6 cross-check, cached per place in memory (and on disk via cached_json).
+    Always requests the full window so every horizon shares one cache entry."""
+    key = (round(float(lat), 2), round(float(lon), 2))
+    hit = _CMIP_MEM.get(key)
+    if hit and time.time() - hit[0] < 7 * 86400:
+        return hit[1]
     rows = monthly_history(lat, lon)
     last = rows[-1]
-    return cmip6(lat, lon, last["y"] + 1, last["y"] + max(2, min(10, int(years))), annual(rows, "t"))
+    out = cmip6(lat, lon, last["y"] + 1, last["y"] + 10, annual(rows, "t"))
+    if out.get("ensemble"):
+        _CMIP_MEM[key] = (time.time(), out)
+    return out
