@@ -34,10 +34,57 @@ CO2 = load("co2.json")
 BASELINE = load("pakistan_baseline.json")
 MONTHS_CHECKED = load("months_checked.json")
 RECENT = load("recent_data.json")
+ERA5 = load("era5_by_country.json")  # ERA5 country averages 1940 to now (prep_era5.py)
 with open(os.path.join(BASE, "static", "es", "countries.geojson")) as _f:
     COUNTRY_GEO = {ft["properties"]["name"].lower(): ft["properties"] for ft in json.load(_f)["features"]}
 ANALYST = Analyst(YEARLY, MODEL, MONTHS_CHECKED, CO2, RECENT, COUNTRY_GEO)
 FIRST_YEAR = min(p[0][0] for p in YEARLY.values() if p)
+
+def country_name(raw):
+    """Turn a name from a URL into the key used in the data. Vercel can hand Flask the path
+    still percent-encoded ("United%20States"), so decode it and match case-insensitively."""
+    from urllib.parse import unquote
+    n = unquote(unquote(raw or "")).replace("+", " ").strip()
+    if n in YEARLY or n in ERA5:
+        return n
+    low = n.lower()
+    for k in list(YEARLY) + list(ERA5):
+        if k.lower() == low:
+            return k
+    return n
+
+BERKELEY_LAST_FULL = 2012  # the Berkeley Earth file stops in Sept 2013, so 2013 is a part-year
+
+def berkeley_full(name):
+    return [p for p in YEARLY.get(name, []) if p[0] <= BERKELEY_LAST_FULL]
+
+def recent_extension(name):
+    """Years after the Berkeley file ends (2014 onward), taken from ERA5 and shifted onto
+    Berkeley's level by the average gap between the two over the years both cover (1951-2013).
+    Returns (points, offset, ytd) or ([], None, None) when ERA5 has no data for the country."""
+    e = ERA5.get(name)
+    b = dict(YEARLY.get(name, []))
+    if not e:
+        return [], None, None
+    ey = dict(e["years"])
+    both = [y for y in range(1951, BERKELEY_LAST_FULL + 1) if y in b and y in ey]
+    if len(both) < 20:
+        return [], None, None
+    off = sum(b[y] - ey[y] for y in both) / len(both)
+    pts = [[y, round(t + off, 2)] for y, t in e["years"] if y > BERKELEY_LAST_FULL]
+    ytd = None
+    if e.get("ytd"):
+        z = e["ytd"]
+        ytd = {"year": z["year"], "months": z["months"], "last_month": z["last_month"],
+               "mean": round(z["mean"] + off, 2),
+               "anomaly_vs_1991_2020": round(z["mean"] - z["normal_same_months"], 2) if z["normal_same_months"] is not None else None}
+    return pts, round(off, 2), ytd
+
+def full_series(name):
+    """Berkeley Earth yearly averages plus the ERA5 extension, one point per year."""
+    ext, _, _ = recent_extension(name)
+    return (berkeley_full(name) if ext else list(YEARLY.get(name, []))) + ext
+
 SETTINGS_FILE = os.path.join(BASE, "data", "settings.json")
 _threshold_global = [None]
 
@@ -312,7 +359,7 @@ COMPARE_COUNTRIES = ["Pakistan", "India", "Afghanistan", "Iran", "China", "Saudi
 
 def dashboard_data():
     """Everything the dashboard charts need, computed from the project data."""
-    pak = dict(YEARLY["Pakistan"])
+    pak = dict(full_series("Pakistan"))
     base = statistics.mean(t for y, t in pak.items() if 1951 <= y <= 1980)
     stripes = [[y, round(t - base, 2)] for y, t in sorted(pak.items()) if y >= 1900]
     # month x year heatmap of Pakistan anomalies (2001 to 2013) from the checked months
@@ -320,20 +367,21 @@ def dashboard_data():
     # warming rate per decade for comparison countries (1950 to 2013)
     rates = []
     for c in COMPARE_COUNTRIES:
-        pts = [p for p in YEARLY.get(c, []) if p[0] >= 1950]
+        pts = [p for p in full_series(c) if p[0] >= 1950]
         fit = climate_lib.ols([p[0] for p in pts], [p[1] for p in pts])
         if fit:
             b = [t for y, t in pts if 1951 <= y <= 1980]
-            last = [t for y, t in pts if y >= 2004]
+            last = [t for y, t in pts if y > pts[-1][0] - 10]
             rates.append({"country": c, "per_decade": round(fit["b"] * 10, 3),
                           "warming": round(statistics.mean(last) - statistics.mean(b), 2) if b and last else None,
                           "mean": round(statistics.mean(t for _, t in pts), 2)})
     rates.sort(key=lambda r: r["per_decade"], reverse=True)
     # countries warming the most overall (1951-1980 vs 2004-2013), from all project countries
     warm_all = []
-    for c, pts in YEARLY.items():
+    for c in YEARLY:
+        pts = full_series(c)
         b = [t for y, t in pts if 1951 <= y <= 1980]
-        last = [t for y, t in pts if y >= 2004]
+        last = [t for y, t in pts if y > pts[-1][0] - 10] if pts else []
         if len(b) >= 25 and len(last) >= 8:
             warm_all.append([c, round(statistics.mean(last) - statistics.mean(b), 2)])
     warm_all.sort(key=lambda r: r[1], reverse=True)
@@ -346,7 +394,8 @@ def dashboard_data():
             "warming_total": len(warm_all), "yoy": yoy, "errors": errs,
             "climatology": [BASELINE[str(m)] for m in range(1, 13)],
             "extremes": sorted(MONTHS_CHECKED, key=lambda r: -r[3])[:8],
-            "pak_last": stripes[-1], "warmest": max(stripes, key=lambda r: r[1])}
+            "pak_last": stripes[-1], "warmest": max(stripes, key=lambda r: r[1]),
+            "last_year": stripes[-1][0], "ytd": recent_extension("Pakistan")[2]}
 
 # ---------------- Data explorer ----------------
 @app.route("/explorer")
@@ -354,16 +403,23 @@ def dashboard_data():
 def explorer():
     return render_template("explorer.html", countries=sorted(YEARLY.keys()))
 
+@app.route("/api/country")
 @app.route("/api/country/<name>")
 @login_required
-def api_country(name):
+def api_country(name=None):
+    name = name or request.args.get("name", "")
+    name = country_name(name)
     pts = YEARLY.get(name)
     if not pts:
-        return jsonify({"error": "country not found"}), 404
-    temps = [t for _, t in pts]
+        return jsonify({"error": "country not found", "country": name}), 404
+    ext, off, ytd = recent_extension(name)
+    if ext:
+        pts = berkeley_full(name)
+    temps = [t for _, t in pts + ext]
+    allp = pts + ext
     return jsonify({
-        "country": name, "points": pts,
-        "records": len(pts), "from": pts[0][0], "to": pts[-1][0],
+        "country": name, "points": pts, "recent": ext, "offset": off, "ytd": ytd,
+        "records": len(allp), "from": allp[0][0], "to": allp[-1][0], "berkeley_to": pts[-1][0],
         "average": round(sum(temps) / len(temps), 2),
         "minimum": min(temps), "maximum": max(temps),
     })
@@ -372,7 +428,11 @@ def api_country(name):
 @app.route("/predictions")
 @login_required
 def predictions():
-    return render_template("predictions.html", model=MODEL, countries=sorted(YEARLY.keys()))
+    ext, _, _ = recent_extension("Pakistan")
+    check = [[y, t, round(MODEL["slope"] * y + MODEL["intercept"], 2)] for y, t in ext]
+    mae = round(sum(abs(a - p) for _, a, p in check) / len(check), 2) if check else None
+    return render_template("predictions.html", model=MODEL, countries=sorted(YEARLY.keys()),
+                           check=check, check_mae=mae)
 
 # ---------------- Alerts (anomaly detection output) ----------------
 @app.route("/alerts")
@@ -410,9 +470,12 @@ def fit_country_model(name):
     return {"slope": slope, "intercept": intercept, "forecasts": fc, "official": False,
             "years_used": "%d to %d" % (pts[0][0], pts[-1][0])}
 
+@app.route("/api/country-model")
 @app.route("/api/country-model/<name>")
 @login_required
-def api_country_model(name):
+def api_country_model(name=None):
+    name = name or request.args.get("name", "")
+    name = country_name(name)
     m = fit_country_model(name)
     if not m:
         return jsonify({"error": "Not enough yearly data from 1950 onward for " + name + "."}), 404
@@ -432,8 +495,9 @@ def yearly_baseline(name):
 
 def yearly_anomalies(name, threshold):
     """Years from 2001 onward whose yearly average is at least `threshold` C above
-    the country's own 1951 to 1980 yearly average. Computed live from project data."""
-    pts = dict(YEARLY.get(name, []))
+    the country's own 1951 to 1980 yearly average. Uses Berkeley Earth to 2013 and the
+    ERA5 extension after that, so the latest complete year is included."""
+    pts = dict(full_series(name))
     base = yearly_baseline(name)
     if base is None:
         return None
@@ -446,9 +510,12 @@ def yearly_anomalies(name, threshold):
     return {"country": name, "baseline": round(base, 2), "rows": rows,
             "years_checked": sum(1 for y in pts if y >= 2001)}
 
+@app.route("/api/yearly-alerts")
 @app.route("/api/yearly-alerts/<name>")
 @login_required
-def api_yearly_alerts(name):
+def api_yearly_alerts(name=None):
+    name = name or request.args.get("name", "")
+    name = country_name(name)
     res = yearly_anomalies(name, current_threshold())
     if res is None:
         return jsonify({"error": "Not enough 1951 to 1980 data for " + name + " to build a baseline."}), 404
@@ -953,20 +1020,122 @@ _WARMING_MAP = {}
 @app.route("/api/warming-map")
 @login_required
 def api_warming_map():
-    """Warming per globe country from the project data: 2004-2013 mean minus
-    1951-1980 mean, plus the 1950-2013 trend per decade."""
+    """Warming per globe country: the latest ten complete years (Berkeley Earth extended with
+    matched ERA5, so 2016-2025 today) minus 1951-1980, plus the trend per decade since 1950."""
     if not _WARMING_MAP:
         for key, props in COUNTRY_GEO.items():
             bname = berkeley_name(props)
-            pts = YEARLY.get(bname or "", [])
+            pts = full_series(bname or "")
+            if not pts:
+                continue
+            end = pts[-1][0]
             b = [t for y, t in pts if 1951 <= y <= 1980]
-            last = [t for y, t in pts if y >= 2004]
+            last = [t for y, t in pts if y > end - 10]
             if len(b) >= 20 and len(last) >= 5:
                 fit = climate_lib.ols([y for y, _ in pts if y >= 1950], [t for y, t in pts if y >= 1950])
                 _WARMING_MAP[props["name"]] = {"warming": round(statistics.mean(last) - statistics.mean(b), 2),
+                                               "period": "%d-%d" % (end - 9, end),
                                                "per_decade": round(fit["b"] * 10, 3) if fit else None,
                                                "dataset_name": bname, "mean": round(statistics.mean(t for _, t in pts if _ >= 1950), 2)}
     return jsonify(_WARMING_MAP)
+
+_GLOBE_CACHE = {}
+
+def _cached_value(key, ttl, fn):
+    hit = _GLOBE_CACHE.get(key)
+    if hit and time.time() - hit[0] < ttl:
+        return hit[1]
+    try:
+        val = fn()
+        _GLOBE_CACHE[key] = (time.time(), val)
+        return val
+    except Exception:
+        if hit:
+            return hit[1]
+        raise
+
+@app.route("/api/globe/events")
+@login_required
+def api_globe_events():
+    """Active tropical storms and erupting volcanoes from NASA EONET (no key needed)."""
+    def get():
+        out = []
+        for cat, kind in (("severeStorms", "storm"), ("volcanoes", "volcano")):
+            d = climate_lib.cached_json("https://eonet.gsfc.nasa.gov/api/v3/events?status=open&days=20&category=" + cat, 3600, timeout=15)
+            for e in d.get("events", []):
+                geo = [g for g in e.get("geometry", []) if g.get("type") == "Point"]
+                if not geo:
+                    continue
+                g = geo[-1]
+                out.append({"kind": kind, "title": e.get("title"), "date": g.get("date"),
+                            "lon": g["coordinates"][0], "lat": g["coordinates"][1],
+                            "wind": g.get("magnitudeValue"), "unit": g.get("magnitudeUnit"),
+                            "track": [[p["coordinates"][1], p["coordinates"][0]] for p in geo[-12:]] if kind == "storm" else []})
+        return {"events": out, "source": "NASA EONET", "fetched": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime())}
+    try:
+        return jsonify(_cached_value("events", 3600, get))
+    except Exception as e:
+        return _service_error(e)
+
+GIBS_WMS = ("https://gibs.earthdata.nasa.gov/wms/epsg4326/best/wms.cgi?SERVICE=WMS&REQUEST=GetMap&VERSION=1.1.1"
+            "&STYLES=&SRS=EPSG:4326&BBOX=-180,-90,180,90&WIDTH=2048&HEIGHT=1024&TRANSPARENT=TRUE")
+GIBS_LAYERS = {  # name -> (NASA layer, format, days back for TIME or None for NASA's latest)
+    "rain": ("IMERG_Precipitation_Rate", "image/png", None),
+    "clouds": ("MODIS_Terra_CorrectedReflectance_TrueColor", "image/jpeg", 1),
+    "fires": ("VIIRS_NOAA20_Thermal_Anomalies_375m_All", "image/png", 1),
+}
+
+@app.route("/api/globe/layer/<name>")
+@login_required
+def api_globe_layer(name):
+    """A whole-world NASA GIBS image for one weather layer, fetched server-side (so the browser
+    never hits cross-origin limits) and cached for three hours."""
+    if name not in GIBS_LAYERS:
+        return jsonify({"error": "unknown layer"}), 404
+    layer, fmt, back = GIBS_LAYERS[name]
+    day = time.strftime("%Y-%m-%d", time.gmtime(time.time() - back * 86400)) if back else None
+    url = (GIBS_WMS.replace("WIDTH=2048&HEIGHT=1024", "WIDTH=4096&HEIGHT=2048") if name == "fires" else GIBS_WMS) + "&LAYERS=" + layer + "&FORMAT=" + fmt + ("&TIME=" + day if day else "")
+    def get():
+        req = urllib.request.Request(url, headers={"User-Agent": "EarthScapeClimateAgency/2.0"})
+        with urllib.request.urlopen(req, timeout=25) as r:
+            body = r.read()
+            if not r.headers.get("Content-Type", "").startswith("image"):
+                raise ValueError("NASA GIBS returned no image")
+        return body
+    try:
+        body = _cached_value("layer:" + name + ":" + str(day), 3 * 3600, get)
+    except Exception:
+        return jsonify({"error": "NASA's imagery service did not respond. Try again shortly."}), 502
+    from flask import Response
+    resp = Response(body, mimetype=fmt)
+    resp.headers["Cache-Control"] = "private, max-age=10800"
+    resp.headers["X-Layer-Date"] = day or "latest"
+    return resp
+
+@app.route("/api/globe/wind")
+@login_required
+def api_globe_wind():
+    """Wind right now on a 15 degree grid (Open-Meteo, one batched request, cached an hour)."""
+    def get():
+        lats, lons = [], []
+        for la in range(-60, 76, 15):
+            for lo in range(-180, 180, 15):
+                lats.append(la); lons.append(lo)
+        url = ("https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s"
+               "&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=kmh") % (
+               ",".join(map(str, lats)), ",".join(map(str, lons)))
+        d = climate_lib.cached_json(url, 3600, timeout=25)
+        pts = []
+        for la, lo, r in zip(lats, lons, d if isinstance(d, list) else [d]):
+            c = r.get("current", {})
+            if c.get("wind_speed_10m") is not None:
+                pts.append([la, lo, c["wind_speed_10m"], c["wind_direction_10m"]])
+        return {"step": 15, "points": pts, "time": (d[0] if isinstance(d, list) else d).get("current", {}).get("time"),
+                "source": "Open-Meteo (ECMWF/GFS blend)"}
+    try:
+        return jsonify(_cached_value("wind", 3600, get))
+    except Exception as e:
+        return _service_error(e)
 
 @app.route("/api/place/cmip6")
 @login_required

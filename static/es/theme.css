@@ -324,3 +324,13 @@ button:disabled { opacity: .6; cursor: progress; }
 .altable td:nth-child(2), .altable td:nth-child(3) { white-space: normal; }
 .altable td:nth-child(2) { min-width: 150px; }
 .al-paused { height: 100%; display: grid; place-items: center; text-align: center; padding: 20px; color: var(--muted); font-size: 13.5px; line-height: 1.6; } .al-paused b { color: #fff; }
+
+/* weather layers */
+.seg.layers button.on { background: linear-gradient(135deg, #8B7CFF, #2E9BFF); }
+#legLayers .ll { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+#legLayers .lbar { height: 8px; border-radius: 99px; margin: 5px 0 3px; }
+#legLayers .lrow { display: flex; justify-content: space-between; font-size: 10.5px; }
+#legLayers .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+#legLayers .busy { color: var(--cyan); }
+#legLayers .err { color: #FF8A98; }
+.storm-lab { font: 600 11px/1.2 Inter, system-ui, sans-serif; color: #fff; background: rgba(60,20,110,.82); border: 1px solid rgba(190,160,255,.6); padding: 3px 7px; border-radius: 8px; white-space: nowrap; transform: translate(-50%, -140%); pointer-events: none; }

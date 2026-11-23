@@ -7,7 +7,7 @@
   <div class="oh-copy">
     <div class="eyebrow">Pakistan is warming</div>
     <div class="bignum"><span data-count="{{ dash.warmest[1] }}" data-dec="2" data-prefix="+">+{{ dash.warmest[1] }}</span><span class="unit">&deg;C</span></div>
-    <p class="oh-lead">Warmest year in the Berkeley Earth record ({{ dash.warmest[0] }}) versus Pakistan's 1951&ndash;1980 normal of {{ dash.baseline }}&nbsp;&deg;C. ERA5 puts <b>2025 at {{ recent.pakistan_yearly['2025'] }}&nbsp;&deg;C</b>, one of the hottest years yet.</p>
+    <p class="oh-lead">Pakistan's hottest year since 1900 ({{ dash.warmest[0] }}) versus its 1951&ndash;1980 normal of {{ dash.baseline }}&nbsp;&deg;C.{% if dash.ytd %} <b>{{ dash.ytd.year }} so far is running {{ '%+.2f'|format(dash.ytd.anomaly_vs_1991_2020) }}&nbsp;&deg;C</b> above the 1991&ndash;2020 normal for the same months.{% endif %}</p>
     <div class="oh-mini">
       <div class="m"><b>{{ dash.warming_count }}/{{ dash.warming_total }}</b><span>countries warmer</span></div>
       <div class="m"><b data-live-alerts>{{ alert_count if alert_count != "" else "&hellip;"|safe }}</b><span>live heat alerts</span></div>
@@ -28,7 +28,7 @@
 </div>
 
 <div class="panel reveal">
-  <div class="phead"><div><h2>Warming stripes &middot; Pakistan</h2><p class="sub">One stripe per year, coloured by difference from the 1951&ndash;1980 normal ({{ dash.baseline }}&nbsp;&deg;C). Hover a stripe for the value.</p></div><span class="tag">Berkeley Earth &middot; 1900&ndash;2013</span></div>
+  <div class="phead"><div><h2>Warming stripes &middot; Pakistan</h2><p class="sub">One stripe per year, coloured by difference from the 1951&ndash;1980 normal ({{ dash.baseline }}&nbsp;&deg;C). Hover a stripe for the value.</p></div><span class="tag">Berkeley Earth + ERA5 &middot; 1900&ndash;{{ dash.last_year }}</span></div>
   <div class="chartbox sm"><canvas id="stripes"></canvas></div>
   <div class="legendbar"></div><div class="legendrow"><span>colder than normal</span><span>normal</span><span>warmer than normal</span></div>
 </div>
@@ -83,11 +83,11 @@
 
 <div class="grid2">
   <div class="panel reveal">
-    <div class="phead"><div><h2>City &amp; country comparison</h2><p class="sub">Warming rate since 1950, &deg;C per decade (linear trend, Berkeley Earth).</p></div></div>
+    <div class="phead"><div><h2>City &amp; country comparison</h2><p class="sub">Warming rate since 1950, &deg;C per decade (linear trend, Berkeley Earth + ERA5 to {{ dash.last_year }}).</p></div></div>
     <div class="chartbox lg"><canvas id="rateChart"></canvas></div>
   </div>
   <div class="panel reveal">
-    <div class="phead"><div><h2>Fastest-warming countries</h2><p class="sub">2004&ndash;2013 average minus 1951&ndash;1980 average, all {{ dash.warming_total }} countries with enough data.</p></div></div>
+    <div class="phead"><div><h2>Fastest-warming countries</h2><p class="sub">Latest ten years ({{ dash.last_year - 9 }}&ndash;{{ dash.last_year }}) minus 1951&ndash;1980 average, all {{ dash.warming_total }} countries with enough data.</p></div></div>
     <div class="chartbox lg"><canvas id="topChart"></canvas></div>
   </div>
 </div>

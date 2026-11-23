@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Data Explorer - EarthScape Climate Agency{% endblock %}
 {% block page_title %}Data Explorer{% endblock %}
-{% block page_sub %}Berkeley Earth yearly temperatures for {{ countries|length }} countries &middot; hover any chart for values{% endblock %}
+{% block page_sub %}Yearly temperatures for {{ countries|length }} countries, 1750s to 2026 &middot; hover any chart for values{% endblock %}
 {% block content %}
 <div class="panel" style="padding:14px 18px">
   <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
@@ -26,36 +26,47 @@
 (function () {
   var C = ES.C, charts = {}, data = null, from = 1900;
   function mk(id, cfg) { if (charts[id] && charts[id].chart) charts[id].chart.destroy(); charts[id] = ES.now(id, cfg); }
+  function allPts() { return d0().points.concat(d0().recent || []); }
+  function d0() { return data; }
   function draw() {
-    var d = data, pts = d.points.filter(function (p) { return p[0] >= from; });
-    mk('countryChart', { type: 'line', data: { labels: pts.map(function (p) { return p[0]; }), datasets: [
-      { label: 'Yearly average (\u00b0C)', data: pts.map(function (p) { return p[1]; }), borderColor: C.sky, backgroundColor: ES.grad(C.sky, .3, 0), fill: true, borderWidth: 1.6 },
-      { label: '10-year running mean', data: pts.map(function (p, i) { var w = pts.slice(Math.max(0, i - 9), i + 1); return w.length < 10 ? null : +(w.reduce(function (s, x) { return s + x[1]; }, 0) / 10).toFixed(2); }), borderColor: C.red, borderWidth: 2.4 }] },
+    var d = data, cut = d.berkeley_to, pts = allPts().filter(function (p) { return p[0] >= from; });
+    var labels = pts.map(function (p) { return p[0]; });
+    var ds = [
+      { label: 'Berkeley Earth (to ' + cut + ')', data: pts.map(function (p) { return p[0] <= cut ? p[1] : null; }), borderColor: C.sky, backgroundColor: ES.grad(C.sky, .3, 0), fill: true, borderWidth: 1.6, spanGaps: false },
+      { label: '10-year running mean', data: pts.map(function (p, i) { var w = pts.slice(Math.max(0, i - 9), i + 1); return w.length < 10 ? null : +(w.reduce(function (s, x) { return s + x[1]; }, 0) / 10).toFixed(2); }), borderColor: C.red, borderWidth: 2.4 }];
+    if (d.recent && d.recent.length) ds.splice(1, 0, { label: 'ERA5 ' + (cut + 1) + '\u2013' + d.to + ' (matched)', data: pts.map(function (p) { return p[0] >= cut ? p[1] : null; }), borderColor: C.amber, backgroundColor: ES.grad(C.amber, .3, 0), fill: true, borderWidth: 2 });
+    mk('countryChart', { type: 'line', data: { labels: labels, datasets: ds },
       options: { plugins: { tooltip: { callbacks: { title: function (i) { return 'Year ' + i[0].label; }, label: function (i) { return i.parsed.y == null ? null : ' ' + i.dataset.label + ': ' + i.parsed.y.toFixed(2) + ' \u00b0C'; } } } }, scales: { x: { ticks: { maxTicksLimit: 14, maxRotation: 0 } }, y: { title: { display: true, text: '\u00b0C' } } } } });
   }
   async function loadCountry(name) {
     document.getElementById('country').value = name;
-    var r = await fetch('/api/country/' + encodeURIComponent(name)), d = await r.json(); data = d;
+    var r = await fetch('/api/country?name=' + encodeURIComponent(name)), d = await r.json();
+    if (!r.ok || !d.points) { document.getElementById('stats').textContent = (d && d.error) || 'Could not load this country.'; return; }
+    data = d;
+    var P = d.points.concat(d.recent || []);
     document.getElementById('exTitle').textContent = d.country + ' \u00b7 yearly average temperature';
-    document.getElementById('stats').textContent = d.records + ' yearly records, ' + d.from + ' to ' + d.to;
-    var base = d.points.filter(function (p) { return p[0] >= 1951 && p[0] <= 1980; }), b = base.length ? base.reduce(function (s, p) { return s + p[1]; }, 0) / base.length : null;
-    var last = d.points.filter(function (p) { return p[0] >= 2004; }), l = last.length ? last.reduce(function (s, p) { return s + p[1]; }, 0) / last.length : null;
-    var hot = d.points.reduce(function (a, p) { return p[1] > a[1] ? p : a; });
+    document.getElementById('stats').textContent = P.length + ' yearly records, ' + d.from + ' to ' + d.to + (d.recent && d.recent.length ? ' \u00b7 ' + (d.berkeley_to + 1) + ' onward from ERA5, matched to Berkeley using the years both cover' : '');
+    var base = P.filter(function (p) { return p[0] >= 1951 && p[0] <= 1980; }), b = base.length ? base.reduce(function (s, p) { return s + p[1]; }, 0) / base.length : null;
+    var lastTo = P[P.length - 1][0], last = P.filter(function (p) { return p[0] > lastTo - 10; }), l = last.length ? last.reduce(function (s, p) { return s + p[1]; }, 0) / last.length : null;
+    var modern = P.filter(function (p) { return p[0] >= 1900; }); if (!modern.length) modern = P;
+    var hot = modern.reduce(function (a, p) { return p[1] > a[1] ? p : a; });
+    var latest = P[P.length - 1], M = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    var y = d.ytd, ytdK = y && y.anomaly_vs_1991_2020 != null ? [y.year + ' so far', ES.sign(y.anomaly_vs_1991_2020) + '<small>\u00b0C</small>', 'Jan\u2013' + M[y.last_month] + ' vs 1991\u20132020 normal', 'var(--violet)'] : ['Average', ES.fmt(d.average, 2) + '<small>\u00b0C</small>', 'all records', 'var(--sky)'];
     document.getElementById('exKpis').innerHTML = [
-      ['Average', ES.fmt(d.average, 2) + '<small>\u00b0C</small>', 'all records', 'var(--sky)'], ['Lowest year', ES.fmt(d.minimum, 2) + '<small>\u00b0C</small>', 'coldest yearly mean', 'var(--cyan)'],
-      ['Highest year', ES.fmt(d.maximum, 2) + '<small>\u00b0C</small>', 'in ' + hot[0], 'var(--red)'], ['Warming', b != null && l != null ? ES.sign(l - b) + '<small>\u00b0C</small>' : '\u2013', '2004\u201313 vs 1951\u201380', 'var(--amber)']
+      ['Latest full year', ES.fmt(latest[1], 2) + '<small>\u00b0C</small>', 'in ' + latest[0], 'var(--sky)'], ytdK,
+      ['Hottest year', ES.fmt(hot[1], 2) + '<small>\u00b0C</small>', 'in ' + hot[0] + ' (since 1900)', 'var(--red)'], ['Warming', b != null && l != null ? ES.sign(l - b) + '<small>\u00b0C</small>' : '\u2013', (lastTo - 9) + '\u2013' + String(lastTo).slice(2) + ' vs 1951\u201380', 'var(--amber)']
     ].map(function (k) { return '<div class="kpi" style="--c:' + k[3] + '"><div class="k-lab"><i></i>' + k[0] + '</div><div class="k-num">' + k[1] + '</div><div class="k-sub">' + k[2] + '</div></div>'; }).join('');
     draw();
-    if (b != null) { var sp = d.points.filter(function (p) { return p[0] >= 1900; }); if (charts.s && charts.s.chart) charts.s.chart.destroy(); charts.s = ES.stripes('exStripes', sp.map(function (p) { return p[0]; }), sp.map(function (p) { return +(p[1] - b).toFixed(2); }), { base: '1951-1980' }); }
-    var dec = {}; d.points.forEach(function (p) { var k = Math.floor(p[0] / 10) * 10; (dec[k] = dec[k] || []).push(p[1]); });
+    if (b != null) { var sp = P.filter(function (p) { return p[0] >= 1900; }); if (charts.s && charts.s.chart) charts.s.chart.destroy(); charts.s = ES.stripes('exStripes', sp.map(function (p) { return p[0]; }), sp.map(function (p) { return +(p[1] - b).toFixed(2); }), { base: '1951-1980' }); }
+    var dec = {}; P.forEach(function (p) { var k = Math.floor(p[0] / 10) * 10; (dec[k] = dec[k] || []).push(p[1]); });
     var dk = Object.keys(dec).filter(function (k) { return dec[k].length >= 5; });
     var dv = dk.map(function (k) { return +(dec[k].reduce(function (s, x) { return s + x; }, 0) / dec[k].length).toFixed(2); });
     mk('exDecades', { type: 'bar', data: { labels: dk.map(function (k) { return k + 's'; }), datasets: [{ label: 'Decade mean \u00b0C', data: dv, backgroundColor: dv.map(function (v) { return b != null ? ES.divColor(v - b, 1.5) : C.sky; }) }] }, options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: false } } } });
-    var lo = Math.floor(d.minimum), hi = Math.ceil(d.maximum), bins = []; for (var t = lo; t < hi; t += 0.5) bins.push(t);
-    mk('exHist', { type: 'bar', data: { labels: bins.map(function (t) { return t.toFixed(1); }), datasets: [{ label: 'Years', data: bins.map(function (t) { return d.points.filter(function (p) { return p[1] >= t && p[1] < t + 0.5; }).length; }), backgroundColor: ES.grad(C.violet, .9, .3) }] }, options: { plugins: { legend: { display: false } }, scales: { x: { title: { display: true, text: '\u00b0C band' } } } } });
+    var lo = Math.floor(d.minimum), hi = Math.ceil(d.maximum) + 1, bins = []; for (var t = lo; t < hi; t += 0.5) bins.push(t);
+    mk('exHist', { type: 'bar', data: { labels: bins.map(function (t) { return t.toFixed(1); }), datasets: [{ label: 'Years', data: bins.map(function (t) { return P.filter(function (p) { return p[1] >= t && p[1] < t + 0.5; }).length; }), backgroundColor: ES.grad(C.violet, .9, .3) }] }, options: { plugins: { legend: { display: false } }, scales: { x: { title: { display: true, text: '\u00b0C band' } } } } });
   }
   document.getElementById('country').addEventListener('change', function (e) { loadCountry(e.target.value); });
-  document.querySelectorAll('.qc').forEach(function (b) { b.onclick = function () { loadCountry(b.textContent); }; });
+  document.querySelectorAll('.qc').forEach(function (b) { b.onclick = function () { loadCountry(b.textContent.trim()); }; });
   document.querySelectorAll('#exRange button').forEach(function (b) { b.onclick = function () { document.querySelectorAll('#exRange button').forEach(function (x) { x.classList.toggle('on', x === b); }); from = +b.dataset.f; draw(); }; });
   var q = new URLSearchParams(location.search).get('country');
   loadCountry(q && [].some.call(document.getElementById('country').options, function (o) { return o.value === q; }) ? q : 'Pakistan');

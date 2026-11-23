@@ -6,6 +6,7 @@
   var page = document.getElementById('globePage'), wrap = document.getElementById('globeWrap'), flatWrap = document.getElementById('flatWrap');
   var hoverEl = document.getElementById('gHover'), drawer = document.getElementById('drawer');
   var S = { features: [], warming: {}, cities: [], mode: 'warming', labels: true, hover: null, selected: null, view: 'globe', g: null };
+  ES.globeState = S;
   var mouse = { x: 0, y: 0 };
   page.addEventListener('pointermove', function (e) { var r = page.getBoundingClientRect(); mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top; hoverEl.style.left = mouse.x + 'px'; hoverEl.style.top = mouse.y + 'px'; });
 
@@ -14,12 +15,12 @@
     var p = f.properties;
     if (S.selected === f) return 'rgba(43,217,107,0.85)';
     if (S.hover === f) return 'rgba(62,224,255,0.75)';
-    if (S.mode === 'warming') { var w = S.warming[p.name]; return w ? ES.divColor(w.warming, 2.2).replace('rgb', 'rgba').replace(')', ',0.72)') : 'rgba(120,140,170,0.25)'; }
+    if (S.mode === 'warming') { var w = S.warming[p.name]; return w ? ES.divColor(w.warming, 2.5).replace('rgb', 'rgba').replace(')', ',0.72)') : 'rgba(120,140,170,0.25)'; }
     return 'rgba(46,155,255,0.10)';
   }
   function hoverHtml(f) {
     var p = f.properties, w = S.warming[p.name];
-    return '<b>' + flag(p.iso) + ' ' + p.name + '</b><br><span style="color:#8FA6C8">' + (w ? 'Warming ' + ES.sign(w.warming) + ' \u00b0C (2004\u201313 vs 1951\u201380) \u00b7 ' + ES.sign(w.per_decade, 2) + ' \u00b0C/dec' + (w.dataset_name && w.dataset_name !== p.name ? ' (series: ' + w.dataset_name + ')' : '') : 'No Berkeley Earth series') + '</span><br><span style="color:#3EE0FF">Click for past \u00b7 present \u00b7 future</span>';
+    return '<b>' + flag(p.iso) + ' ' + p.name + '</b><br><span style="color:#8FA6C8">' + (w ? 'Warming ' + ES.sign(w.warming) + ' \u00b0C (' + (w.period || '2004\u201313') + ' vs 1951\u201380) \u00b7 ' + ES.sign(w.per_decade, 2) + ' \u00b0C/dec' + (w.dataset_name && w.dataset_name !== p.name ? ' (series: ' + w.dataset_name + ')' : '') : 'No Berkeley Earth series') + '</span><br><span style="color:#3EE0FF">Click for past \u00b7 present \u00b7 future</span>';
   }
   function setHover(f) {
     if (S.hover === f) return; S.hover = f;
@@ -49,6 +50,7 @@
     ctl.addEventListener('change', queueDeclutter);
     new ResizeObserver(function () { g.width(wrap.clientWidth).height(wrap.clientHeight); }).observe(wrap);
     document.addEventListener('visibilitychange', function () { document.hidden ? g.pauseAnimation() : g.resumeAnimation(); });
+    document.dispatchEvent(new Event('es:globe'));
   }
   function cityEl(c) {
     var el = c._el = document.createElement('div'); el.className = 'citylabel hid'; el.style.background = ES.tempColor(c.temp);

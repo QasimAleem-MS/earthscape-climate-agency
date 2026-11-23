@@ -15,10 +15,12 @@
     <div class="seg" id="segView"><button data-v="globe" class="on">Globe</button><button data-v="flat">Flat map</button></div>
     <div class="seg" id="segMode"><button data-v="warming" class="on">Warming</button><button data-v="plain">Satellite</button></div>
     <div class="seg" id="segLabels"><button data-v="on" class="on">Live temps</button><button data-v="off">Off</button></div>
+    <div class="seg layers" id="segLayers" aria-label="Weather layers"><button data-l="rain">Rain</button><button data-l="clouds">Clouds</button><button data-l="fires">Fires</button><button data-l="storms">Storms</button><button data-l="wind">Wind</button></div>
   </div>
   <div class="g-legend">
-    <div id="legWarm"><b>Warming since 1951&ndash;1980</b> (2004&ndash;2013 average, Berkeley Earth)
-      <div class="legendbar"></div><div class="legendrow"><span>&minus;2.2&nbsp;&deg;C</span><span>0</span><span>+2.2&nbsp;&deg;C</span></div></div>
+    <div id="legWarm"><b>Warming since 1951&ndash;1980</b> (2016&ndash;2025 average, Berkeley Earth + ERA5)
+      <div class="legendbar"></div><div class="legendrow"><span>&minus;2.5&nbsp;&deg;C</span><span>0</span><span>+2.5&nbsp;&deg;C</span></div></div>
+    <div id="legLayers"></div>
     <div style="margin-top:6px">City chips: temperature right now (Open-Meteo)</div>
   </div>
   <div class="g-stats" id="gCount">loading countries&hellip;</div>
@@ -44,5 +46,6 @@
 {% endblock %}
 {% block scripts %}
 <script src="{{ url_for('static', filename='es/place.js') }}"></script>
+<script src="{{ url_for('static', filename='es/layers.js') }}"></script>
 <script src="{{ url_for('static', filename='es/globe.js') }}"></script>
 {% endblock %}

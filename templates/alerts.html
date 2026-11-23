@@ -215,7 +215,7 @@ document.getElementById('alertCountry').addEventListener('change', async (e) => 
   if (c === 'Pakistan') { box.innerHTML = ''; pak.style.display = ''; return; }
   showTab('data');
   box.innerHTML = '<p>Calculating alerts for ' + c + '...</p>';
-  const r = await fetch('/api/yearly-alerts/' + encodeURIComponent(c));
+  const r = await fetch('/api/yearly-alerts?name=' + encodeURIComponent(c));
   const d = await r.json();
   if (d.error) { box.innerHTML = '<p>' + d.error + '</p>'; pak.style.display = ''; return; }
   pak.style.display = 'none';
