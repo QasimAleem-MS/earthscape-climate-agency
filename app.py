@@ -234,6 +234,10 @@ def admin_required(f):
         return f(*a, **kw)
     return wrap
 
+@app.route("/favicon.ico")
+def favicon():
+    return app.send_static_file("img/favicon.png")
+
 # ---------------- Authentication ----------------
 _FAILED = {}  # (ip, username) -> list of failure times, for a simple lockout
 
