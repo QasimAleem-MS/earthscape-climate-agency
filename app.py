@@ -287,10 +287,22 @@ def login():
         return redirect(url_for("dashboard"))
     return render_template("login.html")
 
-@app.route("/logout")
+@app.after_request
+def no_store_pages(resp):
+    # Signed-in pages must never be served from the browser cache or the
+    # back/forward cache, or they reappear after Logout.
+    if resp.mimetype == "text/html" and not request.path.startswith("/static/"):
+        resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        resp.headers["Pragma"] = "no-cache"
+        resp.headers["Expires"] = "0"
+    return resp
+
+@app.route("/logout", methods=["GET", "POST"])
 def logout():
     session.clear()
-    return redirect(url_for("login"))
+    resp = redirect(url_for("login"))
+    resp.headers["Clear-Site-Data"] = '"cache", "cookies"'
+    return resp
 
 # ---------------- Sign up ----------------
 @app.route("/signup", methods=["GET", "POST"])

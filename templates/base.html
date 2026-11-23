@@ -81,7 +81,7 @@
       <div class="topright">
         <span class="livepill"><span class="livedot"></span> Live data</span>
         <span class="userchip" title="{{ session.get('name') }} ({{ session.get('role') }})"><span class="av">{{ (session.get('name') or 'U')[:1] }}</span><span class="nm">{{ session.get('name') }}<small>{{ session.get('role') }}</small></span></span>
-        <a class="btn-ghost logoutlink" href="{{ url_for('logout') }}">{{ ic('logout') }} Logout</a>
+        <form method="post" action="{{ url_for('logout') }}" class="logoutform"><button type="submit" class="btn-ghost logoutlink">{{ ic('logout') }} Logout</button></form>
       </div>
     </header>
     <main>
@@ -117,5 +117,9 @@
 </main>
 {% endif %}
 {% block scripts %}{% endblock %}
+<script>
+  // A page restored from the back/forward cache after Logout must re-check the session.
+  window.addEventListener('pageshow', function (e) { if (e.persisted) location.reload(); });
+</script>
 </body>
 </html>
